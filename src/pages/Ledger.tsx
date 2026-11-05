@@ -1,0 +1,20 @@
+import { useMemo, useState } from 'react'
+import { Plus, Download, ArrowDownLeft, ArrowUpRight, ChevronLeft, ChevronRight } from 'lucide-react'
+import { useScope, useStore } from '../lib/store'
+import { addDays, today } from '../lib/domain'
+import { PageHeading, SearchInput, Money, TransactionTable } from '../components/ui'
+import { exportWorkbook } from '../lib/exports'
+import type { PageActions } from './Dashboard'
+
+export default function Ledger({onAdd,onTransaction}:PageActions){
+  const data=useScope(),{notify}=useStore()
+  const [tab,setTab]=useState('all'),[search,setSearch]=useState(''),[from,setFrom]=useState(addDays(today(),-29)),[to,setTo]=useState(today()),[page,setPage]=useState(0),[exporting,setExporting]=useState(false)
+  const items=useMemo(()=>data.transactions.filter(t=>(tab==='all'||t.type===tab)&&t.date>=from&&t.date<=to&&`${t.description} ${t.category} ${t.method} ${data.accounts.find(a=>a.id===t.accountId)?.name}`.toLowerCase().includes(search.toLowerCase())).sort((a,b)=>b.date.localeCompare(a.date)),[data,tab,search,from,to])
+  const update=(fn:()=>void)=>{fn();setPage(0)}
+  const total=(type:string)=>items.filter(t=>t.type===type).reduce((n,t)=>n+t.amount,0)
+  const download=async()=>{setExporting(true);try{await exportWorkbook(data,items);notify('Excel ledger exported.')}catch{notify('Export failed. Please try again.')}finally{setExporting(false)}}
+  return <><PageHeading eyebrow="YOUR DAILY LEDGER" title="Every rupee has a story." description="Sales, supplies, and everything in between. Keep it all together." action={<div className="heading-actions"><button className="button secondary" onClick={()=>onAdd('expense')}><ArrowUpRight size={17}/>Add expense</button><button className="button primary" onClick={()=>onAdd('income')}><Plus size={17}/>Add income</button></div>}/>
+    <div className="summary-row"><div><span className="summary-icon mint"><ArrowDownLeft size={20}/></span><div><small>Income in selection</small><strong className="positive"><Money value={total('income')}/></strong></div></div><div><span className="summary-icon peach"><ArrowUpRight size={20}/></span><div><small>Expenses in selection</small><strong><Money value={total('expense')}/></strong></div></div><div><div><small>Net cash flow</small><strong><Money value={total('income')-total('expense')}/></strong></div></div></div>
+    <section className="panel"><div className="filter-toolbar"><div className="segmented">{[['all','All transactions'],['income','Income'],['expense','Expenses']].map(([value,label])=><button key={value} className={tab===value?'active':''} onClick={()=>update(()=>setTab(value))}>{label}</button>)}</div><button className="button secondary small" disabled={exporting||!items.length} onClick={download}><Download size={15}/>{exporting?'Exporting…':'Export Excel'}</button></div><div className="filter-toolbar sub-toolbar"><SearchInput value={search} onChange={v=>update(()=>setSearch(v))} placeholder="Search transactions…"/><div className="date-range"><label><span>From</span><input aria-label="From date" type="date" value={from} max={to} onChange={e=>update(()=>setFrom(e.target.value))}/></label><span>–</span><label><span>To</span><input aria-label="To date" type="date" value={to} min={from} onChange={e=>update(()=>setTo(e.target.value))}/></label></div></div><TransactionTable items={items.slice(page*10,(page+1)*10)} data={data} onDetail={onTransaction}/><div className="pagination"><span>{items.length?`${page*10+1}–${Math.min((page+1)*10,items.length)}`:'0'} of {items.length} transactions</span><div><button aria-label="Previous page" className="icon-button" disabled={page===0} onClick={()=>setPage(p=>p-1)}><ChevronLeft size={17}/></button><span>Page {page+1} of {Math.max(1,Math.ceil(items.length/10))}</span><button aria-label="Next page" className="icon-button" disabled={(page+1)*10>=items.length} onClick={()=>setPage(p=>p+1)}><ChevronRight size={17}/></button></div></div></section><p className="page-note">Only actual movements appear here. A cheque enters your ledger when it clears.</p>
+  </>
+}

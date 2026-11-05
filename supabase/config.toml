@@ -1,0 +1,4 @@
+project_id = "bb-cashdesk"
+
+[functions.cheque-reminders]
+verify_jwt = false
