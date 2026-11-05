@@ -1,36 +1,29 @@
-# Architecture
+# Cafe cashbook architecture
 
 ```text
-React / TypeScript PWA
-  ├─ Demo repository: localStorage + validated pure command reducer
-  └─ Connected repository: Supabase Auth + authenticated RPC
-       ├─ cashdesk_snapshot (security invoker, reads under RLS)
-       └─ cashdesk_mutate (role/branch checks, atomic writes + audit)
-            └─ PostgreSQL relational tables, NUMERIC(15,2)
+React / TypeScript
+  ├─ local demo: validated commands + browser storage
+  └─ connected cafe: Supabase Auth + authenticated RPC
+       ├─ cashdesk_health / workspace_state / create_workspace
+       ├─ cashdesk_snapshot (RLS-filtered reads)
+       └─ cashdesk_mutate (request receipt + atomic command + audit)
+            ├─ cash_days: opening/expected/closing cash counts
+            ├─ bank_transfers: money moved between cash, bank and safe
+            ├─ transactions: actual movements and explicit count differences
+            └─ cheques: commitments, with one movement at clearance
 
-Supabase Cron (02:30 UTC / 08:00 Asia/Colombo)
-  └─ cheque-reminders Edge Function (dedicated Cron secret)
-       ├─ claim_due_reminders (service role only)
-       ├─ Resend API (idempotency key per cheque/date/stage)
-       └─ finish_reminder (claim token guards stale completions)
-
-Cloudflare Workers Static Assets → dist/ + SPA fallback
+Supabase Cron → protected reminder function → Resend
+Vercel Static Assets → application + health.json + versioned service worker
 ```
 
-- `src/lib/domain.ts`: Zod schemas, money/date helpers, ledger math, transitions, forecast, backup validation, and pure demo commands.
-- `src/lib/seed.ts`: fictional fixtures anchored to the current Sri Lankan date.
-- `src/lib/store.tsx`: demo persistence or Supabase session/snapshot/RPC adapter. Connected data refreshes after mutations and every 30 seconds while visible.
-- `src/components`: accessible Radix dialogs and shared entry/display components.
-- `src/pages`: dashboard, ledger, cheques, suppliers, accounts, reminders, reports, team, and settings.
-- `src/lib/exports.ts`: on-demand PDF/XLSX generators, keeping export libraries out of the startup path.
-- `supabase/migrations`: relationships, constraints, RLS, roles, audited atomic writes, and reminder claims.
-- `supabase/functions`: email worker; no credentials in frontend code.
-- `tests`: pure financial invariants, embedded PostgreSQL/RLS tests, and desktop/mobile end-to-end tests.
+The UI has Today, Cashbook, Bank & safe, Cheques, Reminders, Reports, and Settings. There are no bakery production, supplier-credit, inventory, or multi-branch screens. Legacy database entities remain to preserve prior records and foreign keys.
 
-All frontend amounts use integer minor units, and conversion to rupees occurs only at display/export boundaries. PostgreSQL stores decimal amounts. The RPC rejects fractional minor units. Bank balance is always opening balance plus actual movements; it is never incremented alongside a separate transaction insertion. Transaction/audit records are append-only for app users.
+Frontend amounts are integer minor units; PostgreSQL uses `NUMERIC(15,2)`. Account balances always come from their opening balance plus actual movements. A transfer records one expense leg and one income leg but is excluded from operating income/expenses. Daily reports distinguish opening cash, receipts, payments, bank/safe transfers, expected closing, actual closing, and variance.
 
-The demo repository intentionally offers no real security, multi-device syncing, or concurrent-tab transaction guarantees. It must not be used as the production ledger. The connected PostgreSQL repository enforces authorisation and row-locked clearance independently of client code.
+Opening the first cash day can establish an unused, zero-balance drawer's starting cash without inventing a sale. Later count differences require a note and create a separately tagged adjustment. Closed days reject later cash entries. Only one cash day may be open per drawer. Accounts are locked in a consistent order for cash-day and transfer operations.
 
-Report dates are inclusive; weekly grouping starts Monday. The cheque outlook spans today plus 30 days and applies overdue commitments at day zero. Unresolved returned cheques are highlighted for action, but are excluded from outstanding bank commitments until re-presented. Supplier invoices and cheque obligations are distinct; paying a supplier changes its on-account balance only when an actual expense is recorded.
+The request receipt is committed with the command. Retries with the same key and payload return success without another write; reusing a key with different details is rejected. A confirmed write followed by a failed refresh is reported as saved, with stale balances marked read-only until reconnecting. Auth changes clear old snapshots, and late responses cannot repopulate a signed-out session.
 
-The shell service worker caches only same-origin static assets and the application document. It never intercepts cross-origin Supabase/Resend traffic. Update its cache version when changing shell caching behaviour. Connected mode does not save financial snapshots into local storage; only Supabase's normal Auth session is persisted by its SDK.
+Build configuration explicitly allowlists public Supabase settings and rejects secret/service-role keys. Vercel requires a real connection unless demo mode is explicitly requested. `health.json` contains build metadata, not credentials or a database-readiness claim.
+
+The PWA caches only same-origin shell/static resources. Each build has its own cache; updates prompt for a reload after the current entry is finished. Supabase responses are never cached and connected financial writes are not queued offline.

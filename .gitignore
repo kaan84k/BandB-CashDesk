@@ -7,4 +7,6 @@ playwright-report/
 test-results/
 .wrangler/
 .vercel/
+supabase/.temp/
+supabase/.branches/
 *.tsbuildinfo

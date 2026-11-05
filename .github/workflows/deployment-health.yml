@@ -1,0 +1,24 @@
+name: Deployment health
+on:
+  workflow_dispatch:
+  deployment_status:
+permissions:
+  contents: read
+concurrency:
+  group: cashdesk-health-${{ github.event.deployment_status.environment_url || 'production' }}
+  cancel-in-progress: true
+jobs:
+  smoke:
+    if: github.event_name == 'workflow_dispatch' || github.event.deployment_status.state == 'success'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci
+      - name: Verify deployed assets and SPA routes
+        env:
+          CASHDESK_APP_URL: ${{ github.event.deployment_status.environment_url || vars.CASHDESK_APP_URL || 'https://band-b-cash-desk.vercel.app' }}
+        run: npm run smoke:deployment

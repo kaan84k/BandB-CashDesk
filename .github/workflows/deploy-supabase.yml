@@ -1,0 +1,56 @@
+name: Deploy Supabase
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - supabase/**
+      - .github/workflows/deploy-supabase.yml
+permissions:
+  contents: read
+concurrency:
+  group: cashdesk-supabase-production
+  cancel-in-progress: false
+jobs:
+  deploy:
+    # Leave automatic deployment off when the native Supabase GitHub integration
+    # already owns migration deployment. Manual dispatch is available as a fallback.
+    if: github.event_name == 'workflow_dispatch' || vars.SUPABASE_DEPLOY_WITH_ACTIONS == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check deployment bindings
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+          SUPABASE_PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          for name in SUPABASE_ACCESS_TOKEN SUPABASE_DB_PASSWORD SUPABASE_PROJECT_REF; do
+            if [ -z "${!name}" ]; then
+              echo "::error::Missing repository secret: $name"
+              exit 1
+            fi
+          done
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci
+      - run: npm test
+      - run: npm run typecheck
+      - uses: supabase/setup-cli@v1
+        with:
+          version: 3.0.0
+      - name: Apply migrations and deploy reminder function
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+          SUPABASE_PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          supabase link --project-ref "$SUPABASE_PROJECT_REF" --yes
+          supabase db push --remote --yes
+          supabase functions deploy cheque-reminders --remote="$SUPABASE_PROJECT_REF" --use-api --yes
