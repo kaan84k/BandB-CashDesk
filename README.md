@@ -9,7 +9,7 @@ A simple cashbook for a cafe that buys products from suppliers and sells them. T
 3. **Move money:** record a deposit to the bank, money kept in your safe, or money brought back to the drawer.
 4. **Track cheques:** record issued/received cheques and confirm their bank status. Upcoming, overdue, and returned cheques appear in Reminders.
 5. **Close day:** count your closing cash. Any difference from the expected amount is recorded separately, with your note.
-6. **Reports:** view and export opening/closing cash, cash flow, bank/safe transfers, and cheques as PDF or Excel.
+6. **Reports:** view and export opening/closing cash, cash flow, bank/safe transfers, and cheques as PDF or Excel. PDFs use landscape A4 grids, embedded Poppins, aligned decimal amounts, repeated column headings and page numbers.
 
 There are no bakery production, stock, multi-branch, or supplier-credit screens.
 
@@ -71,3 +71,5 @@ npm run smoke:deployment -- https://band-b-cash-desk.vercel.app
 Build before browser tests. They use system Chromium when present, or `PLAYWRIGHT_CHROMIUM_PATH`. Otherwise install Playwright Chromium once. Tests cover the cafe cash routine, transfers, cash counts, cheque clearance, reports, permissions, first-owner setup, password recovery, connection failures, and duplicate-safe retries. Connected browser tests use an isolated mock; SQL tests execute the real migrations in embedded PostgreSQL.
 
 GitHub runs checks on pushes and PRs. A deployment-health workflow checks Vercel assets, direct page routes, PWA files, and whether the deployment is connected rather than in demo mode. `/health.json` reports the build revision and required database version; it contains no keys and does not claim that the database is reachable.
+
+PDFs embed the official Poppins Regular and SemiBold fonts under the [SIL Open Font License](public/licenses/Poppins-OFL.txt). PDF checks parse the generated documents to verify financial totals, pagination, complete records and printable bounds.

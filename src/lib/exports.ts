@@ -1,4 +1,4 @@
-import { cashbookRows, dailyCashRows, formatMoney, isOperating, type Snapshot } from './domain'
+import { cashbookRows, dailyCashRows, type Snapshot } from './domain'
 export function saveFile(blob:Blob,name:string){const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(url),1000)}
 export async function exportCafeWorkbook(data:Snapshot,from:string,to:string){
   const {Workbook}=await import('exceljs'),book=new Workbook();book.creator='B&B CashDesk';book.created=new Date()
@@ -12,18 +12,6 @@ export async function exportCafeWorkbook(data:Snapshot,from:string,to:string){
   const buffer=await book.xlsx.writeBuffer();saveFile(new Blob([buffer],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'}),`cafe-report-${from}-${to}.xlsx`)
 }
 export async function exportCafePdf(data:Snapshot,from:string,to:string){
-  const {jsPDF}=await import('jspdf'),pdf=new jsPDF();let y=20
-  const line=(text:string,bold=false)=>{const lines=pdf.splitTextToSize(text,178);if(y+lines.length*5>277){pdf.addPage();y=20}pdf.setFont('helvetica',bold?'bold':'normal');pdf.setFontSize(bold?12:10);pdf.text(lines,16,y);y+=lines.length*5+4}
-  const items=data.transactions.filter(t=>t.date>=from&&t.date<=to&&isOperating(t)),income=items.filter(t=>t.type==='income').reduce((n,t)=>n+t.amount,0),expense=items.filter(t=>t.type==='expense').reduce((n,t)=>n+t.amount,0)
-  line('Books & Buns | Cafe cashbook',true);line(`${from} to ${to} | All amounts in LKR`);line(`Income ${formatMoney(income)} | Expenses ${formatMoney(expense)} | Net ${formatMoney(income-expense)}`)
-  line('Daily opening and closing cash',true)
-  for(const d of dailyCashRows(data,from,to))line(`${d.date} | Opening ${formatMoney(d.opening)} | Cash in ${formatMoney(d.income)} | Cash out ${formatMoney(d.expenses)} | To bank ${formatMoney(d.bankDeposits)} | To safe ${formatMoney(d.safeDeposits)} | Expected closing ${formatMoney(d.expected)} | Counted closing ${d.closing===null?'Open':formatMoney(d.closing)} | Difference ${d.variance===null?'--':formatMoney(d.variance)}`)
-  line('Bank deposits and safe transfers',true)
-  for(const t of data.transfers.filter(t=>t.date>=from&&t.date<=to))line(`${t.date} | ${data.accounts.find(a=>a.id===t.fromAccountId)?.name} to ${data.accounts.find(a=>a.id===t.toAccountId)?.name} | ${formatMoney(t.amount)} | ${t.description}`)
-  line('Cheques due in this period',true)
-  for(const c of data.cheques.filter(c=>c.dueDate>=from&&c.dueDate<=to))line(`#${c.number} | ${c.payee} | ${c.type} | Due ${c.dueDate} | ${c.status} | ${formatMoney(c.amount)}`)
-  line('Cashbook entries',true)
-  for(const t of cashbookRows(data).filter(t=>t.date>=from&&t.date<=to))line(`${t.date} | ${t.transferId?'Transfer':t.cashDayId?'Cash count':t.type} | ${t.description} | ${formatMoney(t.amount)}`)
-  for(let p=1;p<=pdf.getNumberOfPages();p++){pdf.setPage(p);pdf.setFontSize(8);pdf.text(`Transfers and cash count adjustments are excluded from sales and expenses. | Page ${p}`,16,289)}
-  pdf.save(`cafe-report-${from}-${to}.pdf`)
+  const {createCafePdf}=await import('./pdfReport')
+  createCafePdf(data,from,to).save(`cafe-report-${from}-${to}.pdf`)
 }
