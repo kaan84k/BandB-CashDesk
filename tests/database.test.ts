@@ -10,7 +10,7 @@ async function login(user=OWNER){await db.exec('reset role');await db.query("sel
 async function mutate(type:string,payload:Record<string,unknown>){return db.query('select public.cashdesk_mutate($1::jsonb)',[JSON.stringify({type,payload})])}
 async function snapshot(){const r=await db.query<{data:unknown}>('select public.cashdesk_snapshot() as data');return validateSnapshot(r.rows[0].data)}
 const cheque=(overrides:Record<string,unknown>={})=>({id:crypto.randomUUID(),branchId:BR,accountId:BANK,number:'001100',type:'issued',payee:'Test supplier',supplierId:null,bank:'Test Bank',amount:125050,issueDate:today(),dueDate:addDays(today(),3),status:'issued',notes:'',...overrides})
-const transaction=(overrides:Record<string,unknown>={})=>({id:crypto.randomUUID(),branchId:BR,accountId:BANK,type:'income',amount:10001,category:'Cafe sales',description:'Test sale',date:today(),method:'cash',supplierId:null,chequeId:null,...overrides})
+const transaction=(overrides:Record<string,unknown>={})=>({id:crypto.randomUUID(),branchId:BR,accountId:BANK,type:'income',amount:10001,category:'Business sales',description:'Test sale',date:today(),method:'cash',supplierId:null,chequeId:null,...overrides})
 beforeAll(async()=>{
   db=new PGlite()
   await db.exec(`create schema auth;create table auth.users(id uuid primary key,email text default 'member@example.com',email_confirmed_at timestamptz default now());create function auth.uid() returns uuid language sql stable as $$select nullif(current_setting('request.jwt.claim.sub',true),'')::uuid$$;create role anon;create role authenticated;create role service_role bypassrls;grant usage on schema auth,public to anon,authenticated,service_role;grant execute on function auth.uid() to authenticated,service_role;`)
@@ -18,7 +18,7 @@ beforeAll(async()=>{
 },30000)
 beforeEach(async()=>{
   await db.exec('reset role;truncate auth.users,public.companies cascade')
-  await db.exec(`insert into auth.users values('${OWNER}'),('${STAFF}'),('${MANAGER}'),('${OUTSIDER}');insert into public.companies values('${CO}','Cafe'),('${OTHER}','Other company');insert into public.members values('${OWNER}','${CO}','Owner','owner@example.com','owner'),('${STAFF}','${CO}','Staff','staff@example.com','staff'),('${MANAGER}','${CO}','Manager','manager@example.com','manager'),('${OUTSIDER}','${OTHER}','Outsider','outsider@example.com','owner');insert into public.branches values('${BR}','${CO}','Cafe','Colombo'),('${BR2}','${CO}','Bakery','Production'),('${FOREIGN}','${OTHER}','Other','Elsewhere');insert into public.user_branch_access values('${CO}','${STAFF}','${BR}'),('${CO}','${MANAGER}','${BR}');insert into public.accounts values('${BANK}','${CO}','${BR}','Bank','bank','Commercial',100000),('${CASH}','${CO}','${BR}','Till','cash','',5000),('${BANK2}','${CO}','${BR2}','Bakery bank','bank','Sampath',2000),('${FOREIGN_BANK}','${OTHER}','${FOREIGN}','Foreign bank','bank','Test',3000);`)
+  await db.exec(`insert into auth.users values('${OWNER}'),('${STAFF}'),('${MANAGER}'),('${OUTSIDER}');insert into public.companies values('${CO}','Business'),('${OTHER}','Other company');insert into public.members values('${OWNER}','${CO}','Owner','owner@example.com','owner'),('${STAFF}','${CO}','Staff','staff@example.com','staff'),('${MANAGER}','${CO}','Manager','manager@example.com','manager'),('${OUTSIDER}','${OTHER}','Outsider','outsider@example.com','owner');insert into public.branches values('${BR}','${CO}','Business','Colombo'),('${BR2}','${CO}','Bakery','Production'),('${FOREIGN}','${OTHER}','Other','Elsewhere');insert into public.user_branch_access values('${CO}','${STAFF}','${BR}'),('${CO}','${MANAGER}','${BR}');insert into public.accounts values('${BANK}','${CO}','${BR}','Bank','bank','Commercial',100000),('${CASH}','${CO}','${BR}','Till','cash','',5000),('${BANK2}','${CO}','${BR2}','Bakery bank','bank','Sampath',2000),('${FOREIGN_BANK}','${OTHER}','${FOREIGN}','Foreign bank','bank','Test',3000);`)
   await login()
 })
 afterAll(async()=>{await db?.close()})
@@ -45,7 +45,7 @@ describe('PostgreSQL migrations, RLS, and audited RPCs',()=>{
 describe('reminder scheduling and deduplication',()=>{
   async function prepare(){
     for(const days of [7,3,1,0,-1,2,9])await mutate('addCheque',cheque({number:`N${days+10}`,issueDate:addDays(today(),-10),dueDate:addDays(today(),days)}))
-    await db.exec('reset role');await db.query('insert into public.reminder_settings values($1,true,$2,$3)',[CO,['owner@example.com'],'CashDesk <finance@example.com>']);await db.exec('set role service_role')
+    await db.exec('reset role');await db.query('insert into public.reminder_settings values($1,true,$2,$3)',[CO,['owner@example.com'],'Cashflow <finance@example.com>']);await db.exec('set role service_role')
   }
   async function claim(){const r=await db.query<{data:{id:string;token:string;key:string;stage:string}[]}>('select public.claim_due_reminders() as data');return r.rows[0].data}
   it('claims only 7/3/1/due/overdue stages and never double claims',async()=>{await prepare();const first=await claim();expect(first.map(d=>d.stage).sort()).toEqual(['0-days','1-days','3-days','7-days','overdue'].map(s=>s==='0-days'?'due':s).sort());expect(await claim()).toHaveLength(0)})
@@ -57,7 +57,7 @@ describe('connected startup and safe financial retries',()=>{
   it('exposes only the schema version to anonymous health checks',async()=>{
     await db.exec('reset role;set role anon')
     const result=await db.query<{health:unknown}>('select public.cashdesk_health() as health')
-    expect(result.rows[0].health).toEqual({app:'bb-cashdesk',schemaVersion:5})
+    expect(result.rows[0].health).toEqual({app:'bb-cashdesk',schemaVersion:6})
     await expect(db.query('select public.cashdesk_workspace_state()')).rejects.toThrow('permission denied')
   })
   it('reports missing branch access separately from first-run setup',async()=>{
@@ -68,7 +68,7 @@ describe('connected startup and safe financial retries',()=>{
   it('creates a verified owner in a new private workspace and is safe to retry',async()=>{
     const uid=crypto.randomUUID();await db.exec('reset role');await db.query('insert into auth.users(id,email) values($1,$2)',[uid,'new-owner@example.com']);await login(uid)
     expect((await db.query<{state:{status:string}}>('select public.cashdesk_workspace_state() as state')).rows[0].state.status).toBe('setup_required')
-    const args=['Owner Name','New Cafe','First branch','Colombo']
+    const args=['Owner Name','New Business','First branch','Colombo']
     await db.query('select public.cashdesk_create_workspace($1,$2,$3,$4)',args)
     const first=await snapshot();expect(first.members).toHaveLength(1);expect(first.members[0]).toMatchObject({id:uid,role:'owner',email:'new-owner@example.com'});expect(first.accounts).toHaveLength(3);expect(first.transactions).toHaveLength(0);expect(first.branches).toHaveLength(1)
     await db.query('select public.cashdesk_create_workspace($1,$2,$3,$4)',args)
@@ -77,8 +77,8 @@ describe('connected startup and safe financial retries',()=>{
   })
   it('does not let unverified users create a workspace or members claim ownership',async()=>{
     const uid=crypto.randomUUID();await db.exec('reset role');await db.query('insert into auth.users(id,email,email_confirmed_at) values($1,$2,null)',[uid,'unverified@example.com']);await login(uid)
-    await expect(db.query("select public.cashdesk_create_workspace('Owner','Cafe','Branch','')")).rejects.toThrow('Verify your email')
-    await login(STAFF);await expect(db.query("select public.cashdesk_create_workspace('Owner','Cafe','Branch','')")).rejects.toThrow('already belong')
+    await expect(db.query("select public.cashdesk_create_workspace('Owner','Business','Branch','')")).rejects.toThrow('Verify your email')
+    await login(STAFF);await expect(db.query("select public.cashdesk_create_workspace('Owner','Business','Branch','')")).rejects.toThrow('already belong')
   })
   it('returns the same successful result when a save response is lost',async()=>{
     const command={type:'addTransaction',requestId:crypto.randomUUID(),payload:transaction()}
@@ -99,19 +99,19 @@ describe('connected startup and safe financial retries',()=>{
 
 describe('owner reminder preferences',()=>{
   it('saves preferences and audits the change for the current company only',async()=>{
-    await db.query('select public.cashdesk_update_reminder_settings($1,$2,$3)',[true,['owner@example.com'],'Cafe <finance@example.com>'])
+    await db.query('select public.cashdesk_update_reminder_settings($1,$2,$3)',[true,['owner@example.com'],'Business <finance@example.com>'])
     const settings=await db.query<{company_id:string;enabled:boolean;recipients:string[]}>('select company_id,enabled,recipients from public.reminder_settings')
     expect(settings.rows).toEqual([{company_id:CO,enabled:true,recipients:['owner@example.com']}])
     expect((await snapshot()).audit[0].action).toBe('reminderSettingsUpdated')
     await login(OUTSIDER);expect((await db.query('select * from public.reminder_settings')).rows).toHaveLength(0)
   })
   it('rejects staff/manager changes and invalid recipients',async()=>{
-    await login(MANAGER);await expect(db.query('select public.cashdesk_update_reminder_settings($1,$2,$3)',[true,['owner@example.com'],'Cafe <finance@example.com>'])).rejects.toThrow('Only the owner')
-    await login();await expect(db.query('select public.cashdesk_update_reminder_settings($1,$2,$3)',[true,['invalid-address'],'Cafe <finance@example.com>'])).rejects.toThrow('valid email')
+    await login(MANAGER);await expect(db.query('select public.cashdesk_update_reminder_settings($1,$2,$3)',[true,['owner@example.com'],'Business <finance@example.com>'])).rejects.toThrow('Only the owner')
+    await login();await expect(db.query('select public.cashdesk_update_reminder_settings($1,$2,$3)',[true,['invalid-address'],'Business <finance@example.com>'])).rejects.toThrow('valid email')
   })
 })
 
-describe('cafe opening, closing, bank and safe',()=>{
+describe('business opening, closing, bank and safe',()=>{
   const call=(command:unknown)=>db.query('select public.cashdesk_mutate($1::jsonb)',[JSON.stringify(command)])
   const openCash=async()=>{const id=crypto.randomUUID();await call({type:'openDay',requestId:id,payload:{id,branchId:BR,accountId:CASH,date:today(),opening:500000,notes:''}});return id}
   it('opens and closes actual cash with a separate counted difference',async()=>{
@@ -119,7 +119,7 @@ describe('cafe opening, closing, bank and safe',()=>{
     await mutate('addTransaction',transaction({accountId:CASH,amount:100000}))
     await mutate('addTransaction',transaction({accountId:CASH,type:'expense',amount:50000}))
     const safe=crypto.randomUUID();await mutate('addAccount',{id:safe,branchId:BR,name:'Personal safe',type:'safe',bank:'',openingBalance:0})
-    for(const [account,amount] of [[BANK,150000],[safe,50000]] as const){const id=crypto.randomUUID();const command={type:'transfer',requestId:id,payload:{id,branchId:BR,fromAccountId:CASH,toAccountId:account,amount,date:today(),description:'Move cafe money'}};await call(command);await call(command)}
+    for(const [account,amount] of [[BANK,150000],[safe,50000]] as const){const id=crypto.randomUUID();const command={type:'transfer',requestId:id,payload:{id,branchId:BR,fromAccountId:CASH,toAccountId:account,amount,date:today(),description:'Move business money'}};await call(command);await call(command)}
     let s=await snapshot();expect(s.transfers).toHaveLength(2);expect(s.transactions.filter(t=>t.transferId)).toHaveLength(4)
     const requestId=crypto.randomUUID(),command={type:'closeDay',requestId,payload:{id:day,closing:345000,notes:'Missing change'}};await call(command);await call(command)
     s=await snapshot();expect(s.cashDays[0]).toMatchObject({opening:500000,expectedClosing:350000,closing:345000})
@@ -133,10 +133,10 @@ describe('cafe opening, closing, bank and safe',()=>{
   })
 })
 
-describe('starting a cafe with existing money',()=>{
+describe('starting a business with existing money',()=>{
   it('records starting bank and safe balances and first drawer cash without inventing sales',async()=>{
     const uid=crypto.randomUUID();await db.exec('reset role');await db.query('insert into auth.users(id,email) values($1,$2)',[uid,'cafe-owner@example.com']);await login(uid)
-    await db.query('select public.cashdesk_create_workspace($1,$2,$3,$4,$5,$6,$7)',['Cafe Owner','Books & Buns','My cafe','','Commercial Bank',5100000,1200000])
+    await db.query('select public.cashdesk_create_workspace($1,$2,$3,$4,$5,$6,$7)',['Business Owner','Your business','My business','','Commercial Bank',5100000,1200000])
     let s=await snapshot();expect(s.accounts.find(a=>a.type==='bank')?.openingBalance).toBe(5100000);expect(s.accounts.find(a=>a.type==='safe')?.openingBalance).toBe(1200000)
     const cash=s.accounts.find(a=>a.type==='cash')!,id=crypto.randomUUID()
     await db.query('select public.cashdesk_mutate($1::jsonb)',[JSON.stringify({type:'openDay',requestId:id,payload:{id,branchId:cash.branchId,accountId:cash.id,date:today(),opening:500000,notes:''}})])
@@ -178,7 +178,7 @@ describe('staff privacy and invitations',()=>{
     await login(STAFF)
     for(const type of ['setMemberRole','addAccount','addSupplier','addInvoice','setChequeStatus'])await expect(mutate(type,{})).rejects.toThrow('Data-entry')
     await expect(prepare()).rejects.toThrow('owner');await expect(rpc('cashdesk_revoke_invitation',[NEW])).rejects.toThrow('Owner')
-    await expect(rpc('cashdesk_create_workspace',['Staff','Other cafe','Cafe'])).rejects.toThrow('already belong')
+    await expect(rpc('cashdesk_create_workspace',['Staff','Other business','Business'])).rejects.toThrow('already belong')
     await login(MANAGER);await expect(prepare()).rejects.toThrow('owner')
   })
   it('prepares and reuses a normalized invitation and lets only its verified recipient join as staff',async()=>{
@@ -187,7 +187,7 @@ describe('staff privacy and invitations',()=>{
     await newUser(false);await expect(rpc('cashdesk_accept_invitation',[invite.id])).rejects.toThrow('Verify')
     await db.exec('reset role');await db.query('update auth.users set email_confirmed_at=now() where id=$1',[NEW]);await login(NEW)
     expect((await rpc('cashdesk_workspace_state')).status).toBe('invitation_pending')
-    await expect(rpc('cashdesk_create_workspace',['New','Wrong cafe','Cafe'])).rejects.toThrow('Accept or decline')
+    await expect(rpc('cashdesk_create_workspace',['New','Wrong business','Business'])).rejects.toThrow('Accept or decline')
     await rpc('cashdesk_accept_invitation',[invite.id]);await rpc('cashdesk_accept_invitation',[invite.id])
     expect(await rpc('cashdesk_workspace_state')).toEqual({status:'ready',role:'staff'})
     const ctx=await rpc('cashdesk_entry_context');expect(ctx.cafe.id).toBe(CO);expect(ctx.user.role).toBe('staff');expect(ctx.branches.map((b:{id:string})=>b.id)).toEqual([BR]);await expect(snapshot()).rejects.toThrow('Financial')
@@ -198,12 +198,101 @@ describe('staff privacy and invitations',()=>{
     await login();const fresh=await prepare();await db.exec('reset role');await db.query("update public.staff_invitations set expires_at=now()-interval '1 day' where id=$1",[fresh.id]);await login(NEW);await expect(rpc('cashdesk_accept_invitation',[fresh.id])).rejects.toThrow('no longer active');expect((await rpc('cashdesk_workspace_state')).status).toBe('setup_required')
   })
   it('keeps roster isolated and prevents reassignment of an existing member',async()=>{
-    await expect(rpc('cashdesk_prepare_invitation',['other@example.com','Other',FOREIGN])).rejects.toThrow('your cafe')
+    await expect(rpc('cashdesk_prepare_invitation',['other@example.com','Other',FOREIGN])).rejects.toThrow('your business')
     const invite=await rpc('cashdesk_prepare_invitation',['member@example.com','Existing user',BR]);await login(OUTSIDER);await expect(rpc('cashdesk_accept_invitation',[invite.id])).rejects.toThrow('already belongs');expect((await rpc('cashdesk_people')).members).toHaveLength(1)
     await login();expect((await rpc('cashdesk_people')).members).toHaveLength(3)
   })
   it('allows declining an invitation and reserves delivery completion for the service role',async()=>{
     const invite=await prepare();await expect(rpc('cashdesk_finish_invitation',[invite.id,OWNER,'sent'])).rejects.toThrow('permission denied')
     await newUser();await rpc('cashdesk_decline_invitation',[invite.id]);expect((await rpc('cashdesk_workspace_state')).status).toBe('setup_required')
+  })
+})
+
+describe('owner removal of business access',()=>{
+  async function state(){return (await db.query<{data:any}>('select public.cashdesk_workspace_state() as data')).rows[0].data}
+  it('removes a member once while keeping their entries, cheque events and audit history',async()=>{
+    await login(STAFF);await mutate('addTransaction',transaction());await mutate('addCheque',cheque());await login()
+    const before=await snapshot(),command={type:'removeMember',requestId:crypto.randomUUID(),payload:{id:STAFF}}
+    await db.query('select public.cashdesk_mutate($1::jsonb)',[JSON.stringify(command)])
+    await db.query('select public.cashdesk_mutate($1::jsonb)',[JSON.stringify(command)])
+    const after=await snapshot()
+    expect(after.members.map(m=>m.id)).not.toContain(STAFF)
+    expect(after.transactions).toEqual(before.transactions);expect(after.cheques).toEqual(before.cheques)
+    expect(after.audit.filter(a=>a.action==='removeMember')).toHaveLength(1)
+    expect(after.audit.some(a=>a.actor==='Staff')).toBe(true)
+    await db.exec('reset role')
+    expect((await db.query<{removed_at:string}>('select removed_at from public.members where id=$1',[STAFF])).rows[0].removed_at).toBeTruthy()
+    expect((await db.query('select * from public.cheque_events where actor_id=$1',[STAFF])).rows).toHaveLength(1)
+    expect((await db.query('select * from public.user_branch_access where user_id=$1',[STAFF])).rows).toHaveLength(0)
+  })
+  it('allows only the same-business owner to remove users and forbids direct writes',async()=>{
+    await login(STAFF);await expect(mutate('removeMember',{id:MANAGER})).rejects.toThrow('Data-entry')
+    await login(MANAGER);await expect(mutate('removeMember',{id:STAFF})).rejects.toThrow('owner')
+    await login(OUTSIDER);await expect(mutate('removeMember',{id:STAFF})).rejects.toThrow('not found')
+    await login();await expect(db.query('select public.cashdesk_remove_member($1)',[STAFF])).rejects.toThrow('permission denied')
+    await expect(db.query('update public.members set removed_at=now() where id=$1',[STAFF])).rejects.toThrow('permission denied')
+    await db.exec('reset role;set role anon');await expect(mutate('removeMember',{id:STAFF})).rejects.toThrow('permission denied')
+  })
+  it('protects self access and the last active owner after another owner is removed',async()=>{
+    await expect(mutate('removeMember',{id:OWNER})).rejects.toThrow('own access')
+    await mutate('setMemberRole',{id:MANAGER,role:'owner'})
+    await mutate('removeMember',{id:MANAGER})
+    await expect(mutate('setMemberRole',{id:OWNER,role:'staff'})).rejects.toThrow('at least one owner')
+    await expect(mutate('setMemberRole',{id:MANAGER,role:'owner'})).rejects.toThrow('not found')
+    expect((await snapshot()).members.filter(m=>m.role==='owner')).toHaveLength(1)
+  })
+  it('denies an existing removed session all business reads, writes and setup',async()=>{
+    await mutate('removeMember',{id:STAFF});await login(STAFF)
+    expect(await state()).toEqual({status:'access_removed'})
+    for(const table of ['companies','branches','members','accounts','transactions','cheques','audit_logs'])expect((await db.query(`select * from public.${table}`)).rows).toHaveLength(0)
+    for(const rpc of ['cashdesk_snapshot','cashdesk_entry_context','cashdesk_people'])await expect(db.query(`select public.${rpc}()`)).rejects.toThrow()
+    expect((await db.query<{company:null;role:null}>('select public.cashdesk_company() as company,public.cashdesk_role() as role')).rows[0]).toEqual({company:null,role:null})
+    await expect(mutate('addTransaction',transaction())).rejects.toThrow('membership required')
+    await expect(mutate('removeMember',{id:OWNER})).rejects.toThrow('membership required')
+    await expect(db.query("select public.cashdesk_create_workspace('Removed','Other business','Main')")).rejects.toThrow('removed')
+  })
+  it('revokes pending invitations using both the profile and current verified email',async()=>{
+    await db.exec('reset role');await db.query('update auth.users set email=$1 where id=$2',['changed@example.com',STAFF]);await login()
+    const invitation=(await db.query<{data:{id:string}}>('select public.cashdesk_prepare_invitation($1,$2,$3) as data',['changed@example.com','Staff new email',BR])).rows[0].data
+    await mutate('removeMember',{id:STAFF});await login(STAFF)
+    expect(await state()).toEqual({status:'access_removed'})
+    await expect(db.query('select public.cashdesk_accept_invitation($1)',[invitation.id])).rejects.toThrow('no longer active')
+  })
+  it('restores a removed owner only through a fresh invitation as limited staff',async()=>{
+    await mutate('setMemberRole',{id:MANAGER,role:'owner'})
+    await login(MANAGER)
+    const oldInvite=(await db.query<{data:{id:string}}>('select public.cashdesk_prepare_invitation($1,$2,$3) as data',['future@example.com','Future staff',BR])).rows[0].data
+    await login();await mutate('removeMember',{id:MANAGER})
+    await db.exec('reset role');await db.query('update auth.users set email=$1 where id=$2',['manager@example.com',MANAGER]);await login()
+    const invite=(await db.query<{data:{id:string}}>('select public.cashdesk_prepare_invitation($1,$2,$3) as data',['manager@example.com','Returning teammate',BR2])).rows[0].data
+    await login(MANAGER);expect((await state()).status).toBe('invitation_pending')
+    await db.query('select public.cashdesk_accept_invitation($1)',[invite.id])
+    expect(await state()).toEqual({status:'ready',role:'staff'})
+    const context=(await db.query<{data:{branches:{id:string}[]}}>('select public.cashdesk_entry_context() as data')).rows[0].data
+    expect(context.branches.map(b=>b.id)).toEqual([BR2]);await expect(snapshot()).rejects.toThrow('Financial')
+    await db.exec('reset role')
+    expect((await db.query<{status:string}>('select status from public.staff_invitations where id=$1',[oldInvite.id])).rows[0].status).toBe('revoked')
+  })
+  it('does not let a removed account be reassigned into another company',async()=>{
+    await mutate('removeMember',{id:STAFF});await db.exec('reset role');await db.query('update auth.users set email=$1 where id=$2',['staff@example.com',STAFF]);await login(OUTSIDER)
+    const invite=(await db.query<{data:{id:string}}>('select public.cashdesk_prepare_invitation($1,$2,$3) as data',['staff@example.com','Staff',FOREIGN])).rows[0].data
+    await login(STAFF);expect(await state()).toEqual({status:'access_removed'})
+    await expect(db.query('select public.cashdesk_accept_invitation($1)',[invite.id])).rejects.toThrow('already belongs')
+    await login(OUTSIDER);expect((await snapshot()).members).toHaveLength(1)
+  })
+  it('returns each owner’s actual business name with the financial snapshot',async()=>{
+    expect((await snapshot()).companyName).toBe('Business')
+    await login(OUTSIDER);expect((await snapshot()).companyName).toBe('Other company')
+  })
+})
+
+
+describe('removal and reminder recipients',()=>{
+  it('stops matching reminder emails while keeping other recipients and delivery history',async()=>{
+    await db.exec('reset role');await db.query('update auth.users set email=$1 where id=$2',['changed@example.com',STAFF]);await login()
+    await db.query('select public.cashdesk_update_reminder_settings(true,$1,$2)',[['STAFF@example.com','changed@example.com','owner@example.com'],'Cashflow <reports@example.com>'])
+    await mutate('removeMember',{id:STAFF})
+    const settings=(await db.query<{recipients:string[];enabled:boolean}>('select recipients,enabled from public.reminder_settings')).rows[0]
+    expect(settings.recipients).toEqual(['owner@example.com']);expect(settings.enabled).toBe(true)
   })
 })

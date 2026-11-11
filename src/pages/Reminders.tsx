@@ -63,7 +63,7 @@ function EmailPreferences({initial,onClose,onSaved}:{initial:{enabled:boolean;re
     {error&&<div className="form-error" role="alert">{error}</div>}
     <label className="checkbox-row"><input type="checkbox" checked={enabled} onChange={e=>setEnabled(e.target.checked)}/>Enable daily email reminders</label>
     <label>Recipient emails<textarea name="recipients" rows={3} defaultValue={initial.recipients.join('\n')} placeholder="One email per line, up to 10" required={enabled}/></label>
-    <label>Verified sender<input name="sender" defaultValue={initial.sender} placeholder="Books & Buns <finance@yourdomain.lk>" required={enabled} maxLength={254}/></label>
+    <label>Verified sender<input name="sender" defaultValue={initial.sender} placeholder="Your business <finance@yourdomain.lk>" required={enabled} maxLength={254}/></label>
     <p className="form-note">Your administrator must connect the email provider, verify this sender, and enable the daily schedule. Saving preferences alone does not send email or confirm the schedule is running.</p>
     <div className="form-footer"><button type="button" className="button secondary" disabled={busy} onClick={onClose}>Cancel</button><button className="button primary" disabled={busy}>{busy?'Saving…':'Save email preferences'}</button></div>
   </form></Modal>

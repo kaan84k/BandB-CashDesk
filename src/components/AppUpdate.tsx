@@ -34,5 +34,5 @@ export function AppUpdate() {
     navigator.serviceWorker.addEventListener('controllerchange', () => window.location.reload(), { once: true })
     registration.waiting.postMessage({ type: 'SKIP_WAITING' })
   }
-  return <div className="app-update" role="status"><div><strong>A newer CashDesk is ready.</strong><span>Finish your current entry, then reload to update.</span></div><button className="button secondary small" disabled={reloading} onClick={reload}><RefreshCw size={14}/>{reloading ? 'Updating…' : 'Reload app'}</button></div>
+  return <div className="app-update" role="status"><div><strong>A newer Cashflow is ready.</strong><span>Finish your current entry, then reload to update.</span></div><button className="button secondary small" disabled={reloading} onClick={reload}><RefreshCw size={14}/>{reloading ? 'Updating…' : 'Reload app'}</button></div>
 }

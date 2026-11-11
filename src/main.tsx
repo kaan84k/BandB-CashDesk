@@ -14,6 +14,6 @@ import { AppUpdate } from './components/AppUpdate'
 class ErrorBoundary extends Component<{children:ReactNode},{error:Error|null}>{
   state:{error:Error|null}={error:null}
   static getDerivedStateFromError(error:Error){return {error}}
-  render(){if(this.state.error)return <div className="loading-screen"><h1>CashDesk couldn’t open this view.</h1><p>Your saved records have not been removed. Reload to try again.</p><button className="button primary" onClick={()=>location.reload()}>Reload CashDesk</button></div>;return this.props.children}
+  render(){if(this.state.error)return <div className="loading-screen"><h1>Cashflow couldn’t open this view.</h1><p>Your saved records have not been removed. Reload to try again.</p><button className="button primary" onClick={()=>location.reload()}>Reload Cashflow</button></div>;return this.props.children}
 }
 createRoot(document.getElementById('root')!).render(<StrictMode><BrowserRouter><StoreProvider><AppUpdate/><ErrorBoundary><App/></ErrorBoundary></StoreProvider></BrowserRouter></StrictMode>)

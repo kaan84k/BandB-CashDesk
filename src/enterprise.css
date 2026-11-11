@@ -90,3 +90,16 @@ th{background:#f4f7fb;color:#74839b;border-color:#e3e9f3;font-size:12px;letter-s
   .cafe-balance-card:not(.drawer-balance) > span { min-height: 44px; }
   .today-totals small { min-height: 42px; }
 }
+
+.team-member > .team-member-actions { flex: 0 0 auto; display: flex; align-items: center; gap: 9px; }
+.remove-access-button { color: #b34055; border: 1px solid #efd4da; background: #fff7f8; min-width: 39px; min-height: 42px; }
+.remove-access-button:hover { color: #962d42; background: #ffecef; }
+.button.primary.danger-button { background: #b34055; border-color: #b34055; box-shadow: none; }
+.button.primary.danger-button:hover { background: #962d42; }
+.removal-person { display: grid; gap: 6px; padding: 17px; background: #f4f6fc; border: 1px solid var(--border); border-radius: 8px; overflow-wrap: anywhere; }
+.removal-person strong { font-size: 16px; }
+.removal-person span { color: var(--muted); font-size: 14px; }
+@media (max-width: 760px) {
+  .team-member > .team-member-actions { width: 100%; padding-left: 38px; justify-content: flex-end; }
+  .team-member > div:not(.team-member-actions) { min-width: 160px; }
+}

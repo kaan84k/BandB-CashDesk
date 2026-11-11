@@ -17,7 +17,7 @@ Redeploy after changing environment variables: they are compiled into the build.
 
 ## 2. Apply database migrations
 
-Use the existing Supabase GitHub integration if it manages your production migrations. Migrations live in `supabase/migrations` and must run in filename order. The new cafe workflow requires all five, through `202611110005_staff_access.sql`.
+Use the existing Supabase GitHub integration if it manages your production migrations. Migrations live in `supabase/migrations` and must run in filename order. The new business workflow requires all six, through `202611110006_business_access.sql`.
 
 If the original two migrations are already applied, apply only the pending migrations. If they were run manually, verify and repair their migration-history entries before using CLI automation. Do not rerun existing setup scripts or mark an unapplied migration as applied.
 
@@ -37,9 +37,9 @@ supabase db push --remote --yes
 supabase functions deploy cheque-reminders invite-staff --remote="$SUPABASE_PROJECT_REF" --use-api --yes
 ```
 
-The app's anonymous `cashdesk_health` probe discloses only `app` and `schemaVersion`. Version 5 is required. A missing/stale schema produces a setup message before login, rather than creating a local demo.
+The app's anonymous `cashdesk_health` probe discloses only `app` and `schemaVersion`. Version 6 is required. A missing/stale schema produces a setup message before login, rather than creating a local demo.
 
-## 3. Set up the cafe owner
+## 3. Set up the business owner
 
 In Supabase Authentication → URL Configuration:
 
@@ -47,11 +47,11 @@ In Supabase Authentication → URL Configuration:
 - Allow the same production URL for confirmation/password-reset redirects.
 - Add only the separate preview/development URLs you intend to use.
 
-Create the owner through the app's **New business? Get started** flow or the Supabase Auth dashboard. Email signups must be enabled for app signup; dashboard-created users can sign in without enabling public signup. Verify the email, sign in, and create the cafe. Enter starting bank/safe balances; opening the first cash day records the starting drawer cash.
+Create the owner through the app's **New business? Get started** flow or the Supabase Auth dashboard. Email signups must be enabled for app signup; dashboard-created users can sign in without enabling public signup. Verify the email, sign in, and create the business. Enter starting bank/safe balances; opening the first cash day records the starting drawer cash.
 
-This creates a new private company and its cash drawer, bank account, and personal safe. It never attaches a user to someone else's existing company. A new login intended to join an existing cafe accepts an owner invitation from **Team & access**. Creating another cafe does not grant access to the original.
+This creates a new private company and its cash drawer, bank account, and personal safe. It never attaches a user to someone else's existing company. A new login intended to join an existing cafe accepts an owner invitation from **Team & access**. Creating another business does not grant access to the original.
 
-Existing memberships and financial records remain intact. Legacy supplier/branch tables remain in the database for historical integrity, but the cafe UI does not expose production, supplier-credit, or multi-branch workflows.
+Existing memberships and financial records remain intact. Legacy supplier/branch tables remain in the database for historical integrity, but the business UI does not expose production, supplier-credit, or multi-branch workflows.
 
 ## Staff invitations
 
@@ -59,7 +59,7 @@ The owner opens **Team & access**, enters a name and email, and sends an invitat
 
 The function defaults to `https://band-b-cash-desk.vercel.app` for redirects and CORS. For a different deployment, set the server-side `APP_URL` Edge Function secret to its exact HTTPS origin and allow that origin in Supabase Auth URL Configuration. Allow the production URL for invitation redirects as well as confirmation and reset links. No additional browser secrets are needed.
 
-New users open the Auth invite email, choose a password, then explicitly join the cafe. Existing accounts sign in with the invited, verified email and accept the invitation. The database assigns `staff`; neither the invitation recipient nor the client can choose an owner role or another company. An account already belonging to a cafe cannot be reassigned by an invitation. Pending invitations block accidental new-cafe setup until accepted or declined.
+New users open the Auth invite email, choose a password, then explicitly join the business. Existing accounts sign in with the invited, verified email and accept the invitation. The database assigns `staff`; neither the invitation recipient nor the client can choose an owner role or another company. An account already belonging to a cafe cannot be reassigned by an invitation. Pending invitations block accidental new-cafe setup until accepted or declined.
 
 If email delivery fails, the invitation remains saved and the owner sees the failure. Correct Auth email delivery and submit the same address to retry; a sent invitation is reused. An existing login can accept by signing in even without a new invite email. Expired invitations can be replaced after seven days; revoke pending invitations from the team page. Changing a member to Data entry removes financial access at the database immediately, and the app refreshes roles on focus and every 30 seconds. The owner cannot demote the final owner; the UI keeps self-role changes disabled to avoid accidental lockout. Existing manager accounts retain their earlier access.
 
@@ -70,7 +70,7 @@ In-app reminders work without an email provider. To send daily emails:
 1. Verify a sender domain in Resend.
 2. Put `RESEND_API_KEY` and a strong random `REMINDER_CRON_SECRET` in Supabase Edge Function secrets. Supabase supplies the service-role key server-side. None belongs in Vercel frontend settings.
 3. Deploy `cheque-reminders`. Its configuration disables JWT verification because it requires a constant-time-checked `x-cron-secret`. Requests without the correct secret are rejected.
-4. In CashDesk → Reminders → **Email preferences**, set recipients and the verified sender and enable daily reminders. This saves preferences; it does not send an email or install a scheduler.
+4. In Cashflow → Reminders → **Email preferences**, set recipients and the verified sender and enable daily reminders. This saves preferences; it does not send an email or install a scheduler.
 5. Enable Supabase Cron (`pg_cron`), `pg_net`, and Vault. In the secure Vault UI, create `cashdesk_reminder_url` (your function URL) and `cashdesk_reminder_cron_secret` (matching the function secret).
 
 Schedule the main run at **08:00 Asia/Colombo**, with retries at 08:20 and 08:40:
@@ -112,3 +112,9 @@ Then sign in and verify the public database health check, owner setup, opening c
 Closed cash days are protected. Transfers have two matching movements in one database transaction; sales/expense reports exclude them. Cash count differences are separately recorded and explained. Retrying a confirmed request does not write it again. Financial records remain append-only to app users.
 
 Export backups from Settings, keep them securely, and test restoration. The JSON export covers records visible to your account. Full PostgreSQL/Auth/grant/delivery backups and production restores remain administrator operations; browser restore is deliberately demo-only.
+
+## Removing business users
+
+An owner opens Team & access, selects the remove icon for another member, and confirms **Remove access**. This revokes business permissions immediately at the database, clears branch access, removes their known email addresses from daily reminder recipients, and cancels pending invitations for that member or created by them. The existing login remains valid, with an access-removed screen on the next app refresh (focus or at most 30 seconds). Records, cheque events and audit history keep their original actor references. Removed members cannot create a second workspace to bypass removal.
+
+Self-removal and removal of the final active owner are rejected. Owners may send a fresh invitation to restore a removed member to the same business as staff, with only the newly selected location access. Existing membership history is not reassigned to another company. Migration 6 changes no existing user’s access until an owner explicitly removes them.

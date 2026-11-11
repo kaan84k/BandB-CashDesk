@@ -10,12 +10,12 @@ function fixture() {
   const base = createDemo(), branchId = base.branches[0].id
   const cash = base.accounts.find(a => a.type === 'cash')!, bank = base.accounts.find(a => a.type === 'bank')!
   const transferId = crypto.randomUUID(), dayId = crypto.randomUUID()
-  const entry = (description: string, amount: number, type: 'income' | 'expense', extra: Partial<Transaction> = {}): Transaction => ({ id: crypto.randomUUID(), branchId, accountId: cash.id, date: day, description, category: 'Cafe sales', type, amount, method: 'cash', supplierId: null, chequeId: null, ...extra })
+  const entry = (description: string, amount: number, type: 'income' | 'expense', extra: Partial<Transaction> = {}): Transaction => ({ id: crypto.randomUUID(), branchId, accountId: cash.id, date: day, description, category: 'Business sales', type, amount, method: 'cash', supplierId: null, chequeId: null, ...extra })
   const data: Snapshot = {
     ...base, suppliers: [], invoices: [], cheques: [], audit: [],
     cashDays: [{ id: dayId, branchId, accountId: cash.id, date: day, opening: 100000, openingLedger: 100000, expectedClosing: 102755, closing: 102655, notes: 'Physical cash count' }],
     transfers: [{ id: transferId, branchId, fromAccountId: cash.id, toAccountId: bank.id, date: day, amount: 5000, description: 'DEPOSIT-REFERENCE' }],
-    transactions: [entry('Cafe income', 10055, 'income'), entry('Cafe expense', 2300, 'expense'), entry('Cash adjustment', 100, 'expense', { cashDayId: dayId, countKind: 'closing' }), entry('DEPOSIT-REFERENCE', 5000, 'expense', { transferId }), entry('DEPOSIT-REFERENCE', 5000, 'income', { transferId, accountId: bank.id })],
+    transactions: [entry('Business income', 10055, 'income'), entry('Business expense', 2300, 'expense'), entry('Cash adjustment', 100, 'expense', { cashDayId: dayId, countKind: 'closing' }), entry('DEPOSIT-REFERENCE', 5000, 'expense', { transferId }), entry('DEPOSIT-REFERENCE', 5000, 'income', { transferId, accountId: bank.id })],
   }
   return { data, entry }
 }
@@ -70,7 +70,7 @@ describe('PDF cashbook reports', () => {
   it('paginates long registers with repeated headings and complete page numbering', async () => {
     const { data, entry } = fixture()
     data.transactions = Array.from({ length: 120 }, (_, i) => entry(`ROW-${String(i).padStart(3, '0')} ${'Long supplier purchase description '.repeat(4)}`.slice(0, 160), 12345678901, 'expense'))
-    data.accounts[0].name = 'Cafe bank account '.repeat(8)
+    data.accounts[0].name = 'Business bank account '.repeat(8)
     const pdf = createCafePdf(data, day, day, generated), parsed = await inspect(pdf), output = parsed.text, pages = pdf.getNumberOfPages()
     expect(pages).toBeGreaterThan(3)
     for (let i = 0; i < 120; i++) expect(output).toContain(`ROW-${String(i).padStart(3, '0')}`)

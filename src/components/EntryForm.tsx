@@ -27,13 +27,13 @@ export function EntryForm({kind,onClose}:{kind:FormKind;onClose:()=>void}){
       notify(!synced?'Saved on the server. Refresh your connection to see it.':kind==='cheque'?'Cheque registered. Money moves when it clears.':'Saved successfully. Your cashbook is up to date.');onClose()
     }catch(e){setError(errorMessage(e))}
   }
-  return <Modal open title={titles[kind]} description={kind==='cheque'?'Keep track of the amount, due date and bank status.':kind==='account'?'Keep your cash drawer, bank and personal safe separate.':'A simple entry in your cafe cashbook.'} onClose={()=>{if(!busy)onClose()}}><form className="entry-form" onSubmit={submit}>
+  return <Modal open title={titles[kind]} description={kind==='cheque'?'Keep track of the amount, due date and bank status.':kind==='account'?'Keep your cash drawer, bank and personal safe separate.':'A simple entry in your business cashbook.'} onClose={()=>{if(!busy)onClose()}}><form className="entry-form" onSubmit={submit}>
     {error&&<div role="alert" className="form-error">{error}</div>}
     {(kind==='income'||kind==='expense')&&<>
       <div className="form-grid"><label>Amount (LKR)<input name="amount" inputMode="decimal" placeholder="0.00" required autoFocus/></label><label>Date<input name="date" type="date" defaultValue={today()} max={today()} required/></label></div>
       <label>{kind==='income'?'Money received in':'Paid from'}<select aria-label="Account" name="accountId" required defaultValue={accounts.find(a=>a.type==='cash')?.id??accounts[0]?.id??''}><option value="" disabled>Choose where the money is</option>{accounts.map(a=><option key={a.id} value={a.id}>{a.name}</option>)}</select></label>
       <label>Category<select name="category">{(kind==='income'?['Sales','Other income']:['Supplier purchase','Rent','Electricity & water','Staff pay','Transport','Other expense']).map(c=><option key={c}>{c}</option>)}</select></label>
-      <label>Description<input name="description" placeholder={kind==='income'?'e.g. Today’s cafe sales':'e.g. Products bought from supplier'} maxLength={160}/></label>
+      <label>Description<input name="description" placeholder={kind==='income'?'e.g. Today’s business sales':'e.g. Products bought from supplier'} maxLength={160}/></label>
       <p className="form-note">Bank deposits and money moved to your safe belong under “Move money”. They are transfers, not new income or expenses.</p>
     </>}
     {kind==='cheque'&&<>

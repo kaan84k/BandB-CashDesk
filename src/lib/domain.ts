@@ -17,6 +17,7 @@ export const transferSchema = z.object({id,branchId:id,fromAccountId:id,toAccoun
 export const cashDaySchema = z.object({id,branchId:id,accountId:id,date,opening:money,openingLedger:z.number().int(),closing:money.nullable(),expectedClosing:z.number().int().nullable(),notes:z.string().max(2000).default('')})
 export const snapshotSchema = z.object({
   version: z.literal(1),
+  companyName: name.optional(),
   branches: z.array(z.object({ id, name, location: z.string() })).min(1),
   accounts: z.array(accountSchema), transactions: z.array(transactionSchema), cheques: z.array(chequeSchema),
   suppliers: z.array(supplierSchema), invoices: z.array(invoiceSchema),
@@ -44,6 +45,7 @@ export type Command = (
   | { type:'closeDay'; payload:{id:string;closing:number;notes:string} }
   | { type: 'addSupplier'; payload: Supplier }
   | { type: 'addInvoice'; payload: Invoice }
+  | { type: 'removeMember'; payload: {id:string} }
   | { type: 'setMemberRole'; payload: { id: string; role: Role } }
 ) & { requestId?: string }
 
@@ -112,7 +114,7 @@ export function validateSnapshot(input: unknown): Snapshot {
   return s
 }
 export function applyCommand(data: Snapshot, command: Command, actor: {id:string; role:Role; name:string}): Snapshot {
-  if (command.type === 'setMemberRole' && actor.role !== 'owner') throw new Error('Only the owner can manage team roles')
+  if (['setMemberRole','removeMember'].includes(command.type) && actor.role !== 'owner') throw new Error('Only the owner can manage team roles')
   if (['setChequeStatus','addAccount'].includes(command.type) && actor.role === 'staff') throw new Error('A manager or owner must approve this change')
   const next = structuredClone(data)
   const p = command.payload
@@ -142,6 +144,13 @@ export function applyCommand(data: Snapshot, command: Command, actor: {id:string
   } else if (command.type === 'addAccount') next.accounts.push(accountSchema.parse(command.payload))
   else if (command.type === 'addSupplier') next.suppliers.push(supplierSchema.parse(command.payload))
   else if (command.type === 'addInvoice') next.invoices.unshift(invoiceSchema.parse(command.payload))
+  else if (command.type === 'removeMember') {
+    if(command.payload.id===actor.id)throw new Error('You cannot remove your own access')
+    const member=next.members.find(m=>m.id===command.payload.id)
+    if(!member)throw new Error('Team member not found')
+    if(member.role==='owner'&&next.members.filter(m=>m.role==='owner').length<=1)throw new Error('Keep at least one owner')
+    next.members=next.members.filter(m=>m.id!==member.id)
+  }
   else if (command.type === 'setMemberRole') {
     const member = next.members.find(m=>m.id===command.payload.id)
     if (!member) throw new Error('Team member not found')
@@ -161,7 +170,7 @@ export function requireOpenCashDay(data:Snapshot,accountId:string,day:string) {
 }
 export function validateCafeRecords(s:Snapshot) {
   for(const transfer of s.transfers){
-    for(const accountId of [transfer.fromAccountId,transfer.toAccountId])if(!s.accounts.some(a=>a.id===accountId&&a.branchId===transfer.branchId))throw new Error('Transfer accounts must belong to your cafe')
+    for(const accountId of [transfer.fromAccountId,transfer.toAccountId])if(!s.accounts.some(a=>a.id===accountId&&a.branchId===transfer.branchId))throw new Error('Transfer accounts must belong to your business')
     const legs=s.transactions.filter(t=>t.transferId===transfer.id)
     if(legs.length!==2||!legs.some(t=>t.type==='expense'&&t.accountId===transfer.fromAccountId&&t.amount===transfer.amount)||!legs.some(t=>t.type==='income'&&t.accountId===transfer.toAccountId&&t.amount===transfer.amount)||legs.some(t=>t.date!==transfer.date||t.chequeId||t.cashDayId))throw new Error('Each transfer must have exactly two matching account movements')
   }

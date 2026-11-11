@@ -33,3 +33,13 @@ describe('ledger and cheque lifecycle',()=>{
   it('flags returned, overdue, and upcoming cheques and excludes finalised ones',()=>{const s=createDemo(),r=reminders(s);expect(r.some(c=>c.status==='returned')).toBe(true);expect(r.every(c=>!['cleared','cancelled'].includes(c.status))).toBe(true);expect(r.some(c=>daysUntil(c.dueDate)>7)).toBe(false)})
   it('forecasts commitments without counting cleared cheques twice',()=>{const s=createDemo(),forecast=chequeForecast(s);expect(forecast).toHaveLength(31);expect(forecast.at(-1)!.balance).toBe(total(s)-27500000+7500000);const c=s.cheques[0];const cleared=applyCommand(s,{type:'setChequeStatus',payload:{id:c.id,status:'cleared',date:today()}},DEMO_USER);expect(chequeForecast(cleared).at(-1)!.balance).toBe(forecast.at(-1)!.balance)})
 })
+
+it('lets owners remove another demo member without losing recorded history',()=>{
+  const data=createDemo(),member=data.members.find(m=>m.role==='staff')!
+  const next=applyCommand(data,{type:'removeMember',payload:{id:member.id}},DEMO_USER)
+  expect(next.members.some(m=>m.id===member.id)).toBe(false)
+  expect(next.transactions).toEqual(data.transactions)
+  expect(next.audit[0].action).toBe('removeMember')
+  expect(()=>applyCommand(data,{type:'removeMember',payload:{id:DEMO_USER.id}},DEMO_USER)).toThrow('own access')
+  expect(()=>applyCommand(data,{type:'removeMember',payload:{id:DEMO_USER.id}},member)).toThrow('Only the owner')
+})

@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
 import { createReminderHandler } from '../supabase/functions/cheque-reminders/handler'
 
-const delivery={id:crypto.randomUUID(),token:crypto.randomUUID(),key:'cashdesk/test/2026-11-05/due',recipients:['owner@example.com'],sender:'Cafe <cafe@example.com>',payee:'Example supplier',number:'100',amount:1250.50,dueDate:'2026-11-05',type:'issued',stage:'due'}
+const delivery={id:crypto.randomUUID(),token:crypto.randomUUID(),key:'cashdesk/test/2026-11-05/due',recipients:['owner@example.com'],sender:'Business <business@example.com>',payee:'Example supplier',number:'100',amount:1250.50,dueDate:'2026-11-05',type:'issued',stage:'due'}
 function fixture(options:{missing?:string;providerFailure?:boolean;claimFailure?:boolean;finishFailure?:boolean;empty?:boolean}={}){
   const rpc=vi.fn(async(name:string)=>name==='claim_due_reminders'?{data:options.empty?[]:[delivery],error:options.claimFailure?'claim error':null}:{data:null,error:options.finishFailure?'finish error':null})
   const fetcher=vi.fn(async()=>options.providerFailure?new Response('Unavailable',{status:503}):Response.json({id:'test-provider-id'}))

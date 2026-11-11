@@ -18,7 +18,7 @@ type Setup = { name: string; companyName: string; branchName: string; location: 
 type Store = {
   data: Snapshot | null; entryData:EntryContext|null; invitations:PendingInvitation[]; user: Member | null; session: Session | null
   loading: boolean; error: string; busy: boolean; syncError: string; syncing: boolean
-  online: boolean; lastSyncedAt: string | null; workspaceSetup: boolean; branchAccessRequired: boolean
+  online: boolean; lastSyncedAt: string | null; workspaceSetup: boolean; branchAccessRequired: boolean; accessRemoved:boolean
   recovery: boolean; setRecovery: (value: boolean) => void
   branch: string; setBranch: (id: string) => void; demo: boolean
   execute: (command: Command) => Promise<boolean>; refresh: () => Promise<boolean>
@@ -42,6 +42,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const [lastSyncedAt, setLastSyncedAt] = useState<string | null>(null)
   const [workspaceSetup, setWorkspaceSetup] = useState(false)
   const [branchAccessRequired, setBranchAccessRequired] = useState(false)
+  const [accessRemoved,setAccessRemoved]=useState(false)
   const [recovery, setRecovery] = useState(initialLinkType === 'recovery' || initialLinkType === 'invite')
   const [branch, setBranch] = useState('all')
   const [notice, setNotice] = useState('')
@@ -72,7 +73,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         if (!healthy.current) {
           const { data: health, error: healthError } = await supabase.rpc('cashdesk_health')
           if (healthError) throw healthError
-          if (!health || health.app !== 'bb-cashdesk' || !Number.isInteger(health.schemaVersion) || health.schemaVersion < clientConfig.requiredSchemaVersion) throw new Error('The Supabase database needs the latest CashDesk migrations. Apply the pending migrations, then try again.')
+          if (!health || health.app !== 'bb-cashdesk' || !Number.isInteger(health.schemaVersion) || health.schemaVersion < clientConfig.requiredSchemaVersion) throw new Error('The Supabase database needs the latest Cashflow migrations. Apply the pending migrations, then try again.')
           healthy.current = true
         }
         const { data: auth, error: authError } = await supabase.auth.getSession()
@@ -83,13 +84,14 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         sessionUser.current = uid
         setSession(auth.session)
         if (!auth.session) {
-          replaceData(null); replaceEntry(null); setInvitations([]); setWorkspaceSetup(false); setBranchAccessRequired(false)
+          replaceData(null); replaceEntry(null); setInvitations([]); setWorkspaceSetup(false); setBranchAccessRequired(false); setAccessRemoved(false)
           setError(''); setSyncError(''); return true
         }
         const { data: state, error: stateError } = await supabase.rpc('cashdesk_workspace_state')
         if (stateError) throw stateError
         if (!current()) return false
         setInvitations(state?.status==='invitation_pending'?state.invitations:[])
+        setAccessRemoved(state?.status==='access_removed')
         setWorkspaceSetup(state?.status === 'setup_required')
         setBranchAccessRequired(state?.status === 'branch_access_required')
         if (state?.status !== 'ready') {
@@ -138,7 +140,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       if ((next?.user.id ?? null) !== sessionUser.current) {
         ++generation.current
         sessionUser.current = next?.user.id ?? null
-        replaceData(null); replaceEntry(null); setInvitations([]); setBranch('all'); setWorkspaceSetup(false); setBranchAccessRequired(false)
+        replaceData(null); replaceEntry(null); setInvitations([]); setBranch('all'); setWorkspaceSetup(false); setBranchAccessRequired(false); setAccessRemoved(false)
       }
       setSession(next)
       // Supabase auth callbacks must not await other SDK methods while its lock is held.
@@ -175,6 +177,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       if (supabase) {
         const requestId = command.requestId ?? (command.type.startsWith('add') ? command.payload.id : crypto.randomUUID())
         const { error: writeError } = await supabase.rpc('cashdesk_mutate', { command: { ...command, requestId } })
+        if(writeError&&(writeError.code==='42501'||/Workspace membership required/.test(writeError.message)))await refresh()
         if (writeError) throw new Error(/fetch|network|timeout|timed out|abort/i.test(messageOf(writeError))
           ? 'The save could not be confirmed. Your form is kept open; retrying the same save will not record it twice.'
           : connectionMessage(writeError))
@@ -183,7 +186,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       }
       const raw = localStorage.getItem(STORAGE_KEY)
       const latest = raw ? validateSnapshot(JSON.parse(raw)) : data
-      if(!latest)throw new Error('Cafe records are not loaded')
+      if(!latest)throw new Error('Business records are not loaded')
       const actor = latest.members.find(m => m.id === user.id)
       if (!actor) throw new Error('Your membership no longer exists')
       const next = applyCommand(latest, command, actor)
@@ -211,7 +214,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     if (supabase) throw new Error('Demo reset is unavailable in a connected workspace')
     await restore(createDemo())
   }
-  return <Context.Provider value={{ data, entryData, invitations, user, session, loading, error, busy, syncError, syncing, online, lastSyncedAt, workspaceSetup, branchAccessRequired, recovery, setRecovery, branch, setBranch, demo: clientConfig.mode === 'demo', execute, refresh, setupWorkspace, restore, reset, notice, notify }}>{children}</Context.Provider>
+  return <Context.Provider value={{ data, entryData, invitations, user, session, loading, error, busy, syncError, syncing, online, lastSyncedAt, workspaceSetup, branchAccessRequired, accessRemoved, recovery, setRecovery, branch, setBranch, demo: clientConfig.mode === 'demo', execute, refresh, setupWorkspace, restore, reset, notice, notify }}>{children}</Context.Provider>
 }
 export function useStore() { const s = useContext(Context); if (!s) throw new Error('Missing store provider'); return s }
 export function useScope() {

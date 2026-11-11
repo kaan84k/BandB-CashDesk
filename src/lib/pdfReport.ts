@@ -20,7 +20,7 @@ export function createCafePdf(data: Snapshot, from: string, to: string, generate
   pdf.addFileToVFS('Poppins-SemiBold.ttf', semiboldFont.split(',')[1])
   pdf.addFont('Poppins-Regular.ttf', 'Poppins', 'normal')
   pdf.addFont('Poppins-SemiBold.ttf', 'Poppins', 'bold')
-  pdf.setProperties({ title: `Cafe cashbook | ${from} to ${to}`, subject: 'Daily cash, bank and safe transfers, cheques and cashbook entries', author: 'B&B CashDesk', creator: 'B&B CashDesk' })
+  pdf.setProperties({ title: `Business cashbook | ${from} to ${to}`, subject: 'Daily cash, bank and safe transfers, cheques and cashbook entries', author: 'Cashflow', creator: 'Cashflow' })
   const width = pdf.internal.pageSize.getWidth(), height = pdf.internal.pageSize.getHeight()
   const margin = 14, contentWidth = width - margin * 2, bottom = height - 22
   const period = `${date(from)} to ${date(to)}`
@@ -31,14 +31,14 @@ export function createCafePdf(data: Snapshot, from: string, to: string, generate
   const expenses = sum(operating.filter(t => t.type === 'expense'), t => t.amount)
 
   pdf.setFont('Poppins', 'bold').setFontSize(21).setTextColor(navy)
-  pdf.text('Cafe cashbook report', margin, 32)
+  pdf.text('Business cashbook report', margin, 32)
   pdf.setFont('Poppins', 'normal').setFontSize(10).setTextColor(muted)
   pdf.text(period, margin, 41)
   pdf.setFontSize(8.5).text(`Generated ${timestamp} | Sri Lanka time`, width - margin, 41, { align: 'right' })
   const branches = data.branches.filter(b => data.accounts.some(a => a.branchId === b.id))
   const cafe = (branches.length ? branches : data.branches).map(b => b.name).join(', ')
   pdf.setFontSize(9)
-  const cafeLines: string[] = pdf.splitTextToSize(`Cafe: ${cafe || 'Cafe workspace'}`, contentWidth)
+  const cafeLines: string[] = pdf.splitTextToSize(`Business: ${data.companyName || cafe || 'Business workspace'}`, contentWidth)
   pdf.text(cafeLines, margin, 47)
   const summaryTop = 49 + cafeLines.length * 4.3, cardWidth = (contentWidth - 12) / 3
   for (const [index, metric] of [{ title: 'OPERATING INCOME', amount: income }, { title: 'OPERATING EXPENSES', amount: expenses }, { title: 'NET CASH FLOW', amount: income - expenses }].entries()) {
@@ -149,14 +149,14 @@ export function createCafePdf(data: Snapshot, from: string, to: string, generate
   const pages = pdf.getNumberOfPages()
   for (let page = 1; page <= pages; page++) {
     pdf.setPage(page)
-    pdf.setFont('Poppins', 'bold').setFontSize(12).setTextColor(navy).text('B&B CashDesk', margin, 14)
+    pdf.setFont('Poppins', 'bold').setFontSize(12).setTextColor(navy).text('Cashflow', margin, 14)
     pdf.setFont('Poppins', 'normal').setFontSize(8.5).setTextColor(muted)
-    pdf.text(page === 1 ? 'CAFE CASHBOOK / ALL AMOUNTS IN LKR' : `${period} | All amounts in LKR`, width - margin, 14, { align: 'right' })
+    pdf.text(page === 1 ? 'BUSINESS CASHBOOK / ALL AMOUNTS IN LKR' : `${period} | All amounts in LKR`, width - margin, 14, { align: 'right' })
     pdf.setDrawColor(border).setLineWidth(.2).line(margin, 21, width - margin, 21)
     pdf.line(margin, height - 16, width - margin, height - 16)
     pdf.setFontSize(8).setTextColor(muted)
     pdf.text('Transfers and cash-count adjustments are excluded from operating income and expenses.', margin, height - 11)
-    pdf.text('B&B CashDesk | Cafe financial records', margin, height - 6)
+    pdf.text('Cashflow | Business financial records', margin, height - 6)
     pdf.text(`Page ${page} of ${pages}`, width - margin, height - 9, { align: 'right' })
   }
   return pdf

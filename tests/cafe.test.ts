@@ -4,10 +4,10 @@ import { createDemo, DEMO_USER } from '../src/lib/seed'
 function emptyCafe(){const s=createDemo();s.transactions=[];s.transfers=[];s.cashDays=[];s.cheques=[];s.suppliers=[];s.invoices=[];s.audit=[];s.accounts.forEach(a=>a.openingBalance=a.type==='cash'?100000:a.type==='bank'?500000:0);return s}
 function run(s:Snapshot,type:Command['type'],payload:unknown){return applyCommand(s,{type,payload} as Command,DEMO_USER)}
 function open(s:Snapshot){const cash=s.accounts.find(a=>a.type==='cash')!;return run(s,'openDay',{id:crypto.randomUUID(),branchId:cash.branchId,accountId:cash.id,date:today(),opening:100000,notes:''})}
-function entry(s:Snapshot,type:'income'|'expense',amount:number){const cash=s.accounts.find(a=>a.type==='cash')!;return run(s,'addTransaction',{id:crypto.randomUUID(),branchId:cash.branchId,accountId:cash.id,date:today(),type,amount,category:type==='income'?'Sales':'Supplier purchase',description:type==='income'?'Cafe sales':'Supplier products',method:'cash',supplierId:null,chequeId:null})}
+function entry(s:Snapshot,type:'income'|'expense',amount:number){const cash=s.accounts.find(a=>a.type==='cash')!;return run(s,'addTransaction',{id:crypto.randomUUID(),branchId:cash.branchId,accountId:cash.id,date:today(),type,amount,category:type==='income'?'Sales':'Supplier purchase',description:type==='income'?'Business sales':'Supplier products',method:'cash',supplierId:null,chequeId:null})}
 function move(s:Snapshot,to:'bank'|'safe',amount:number){const from=s.accounts.find(a=>a.type==='cash')!,target=s.accounts.find(a=>a.type===to)!;return run(s,'transfer',{id:crypto.randomUUID(),branchId:from.branchId,fromAccountId:from.id,toAccountId:target.id,date:today(),amount,description:`Cash to ${to}`})}
 afterEach(()=>vi.useRealTimers())
-describe('one cafe daily cashbook',()=>{
+describe('one business daily cashbook',()=>{
   it('opens the day and keeps bank deposits and safe movements out of sales',()=>{
     let s=open(emptyCafe());const totalBefore=s.accounts.reduce((n,a)=>n+balance(a,s.transactions),0)
     s=entry(s,'income',50000);s=entry(s,'expense',20000);s=move(s,'bank',30000);s=move(s,'safe',10000)

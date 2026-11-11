@@ -29,7 +29,7 @@ export function createInviteHandler(deps:Dependencies){
       const code=error&&typeof error==='object'&&'code' in error?error.code:''
       return reply({message:code==='42501'?'Only the owner can invite staff.':'The invitation could not be saved. Check the details and try again.'},code==='42501'?403:400)
     }
-    if(invitation.emailStatus==='sent'||invitation.emailStatus==='existing_account')return reply({invitationId:invitation.id,delivery:invitation.emailStatus,message:'This invitation is already pending. The person can sign in and join your cafe.'})
+    if(invitation.emailStatus==='sent'||invitation.emailStatus==='existing_account')return reply({invitationId:invitation.id,delivery:invitation.emailStatus,message:'This invitation is already pending. The person can sign in and join your business.'})
     let delivery:'sent'|'existing_account'
     try{delivery=await deps.send(invitation.email,appOrigin)}catch{
       try{await deps.finish(invitation.id,actor,'failed')}catch{}
@@ -37,6 +37,6 @@ export function createInviteHandler(deps:Dependencies){
     }
     let statusRecorded=true
     try{await deps.finish(invitation.id,actor,delivery)}catch{statusRecorded=false}
-    return reply({invitationId:invitation.id,delivery,statusRecorded,message:delivery==='sent'?'Invitation email sent. Staff will join this cafe after verifying their email.':'This person already has a login. Ask them to sign in and accept the cafe invitation.'})
+    return reply({invitationId:invitation.id,delivery,statusRecorded,message:delivery==='sent'?'Invitation email sent. Staff will join this business after verifying their email.':'This person already has a login. Ask them to sign in and accept the business invitation.'})
   }
 }
