@@ -17,11 +17,11 @@ Redeploy after changing environment variables: they are compiled into the build.
 
 ## 2. Apply database migrations
 
-Use the existing Supabase GitHub integration if it manages your production migrations. Migrations live in `supabase/migrations` and must run in filename order. The new cafe workflow requires all four, through `202611050004_cafe_cashbook.sql`.
+Use the existing Supabase GitHub integration if it manages your production migrations. Migrations live in `supabase/migrations` and must run in filename order. The new cafe workflow requires all five, through `202611110005_staff_access.sql`.
 
 If the original two migrations are already applied, apply only the pending migrations. If they were run manually, verify and repair their migration-history entries before using CLI automation. Do not rerun existing setup scripts or mark an unapplied migration as applied.
 
-A **Deploy Supabase** GitHub Actions workflow is included as a fallback. It uses the verified Supabase CLI 3.0.0, runs tests first, applies pending remote migrations, and deploys the reminder function without Docker. Configure these repository secrets securely:
+A **Deploy Supabase** GitHub Actions workflow is included as a fallback. It uses the verified Supabase CLI 3.0.0, runs tests first, applies pending remote migrations, and deploys the reminder and staff-invitation functions without Docker. Configure these repository secrets securely:
 
 - `SUPABASE_ACCESS_TOKEN`
 - `SUPABASE_DB_PASSWORD`
@@ -34,10 +34,10 @@ CLI 3 commands used by the workflow:
 ```sh
 supabase link --project-ref "$SUPABASE_PROJECT_REF" --yes
 supabase db push --remote --yes
-supabase functions deploy cheque-reminders --remote="$SUPABASE_PROJECT_REF" --use-api --yes
+supabase functions deploy cheque-reminders invite-staff --remote="$SUPABASE_PROJECT_REF" --use-api --yes
 ```
 
-The app's anonymous `cashdesk_health` probe discloses only `app` and `schemaVersion`. Version 4 is required. A missing/stale schema produces a setup message before login, rather than creating a local demo.
+The app's anonymous `cashdesk_health` probe discloses only `app` and `schemaVersion`. Version 5 is required. A missing/stale schema produces a setup message before login, rather than creating a local demo.
 
 ## 3. Set up the cafe owner
 
@@ -49,9 +49,19 @@ In Supabase Authentication → URL Configuration:
 
 Create the owner through the app's **New business? Get started** flow or the Supabase Auth dashboard. Email signups must be enabled for app signup; dashboard-created users can sign in without enabling public signup. Verify the email, sign in, and create the cafe. Enter starting bank/safe balances; opening the first cash day records the starting drawer cash.
 
-This creates a new private company and its cash drawer, bank account, and personal safe. It never attaches a user to someone else's existing company. A new login intended to join an existing cafe must receive membership and access from its administrator. Creating another cafe does not grant access to the original.
+This creates a new private company and its cash drawer, bank account, and personal safe. It never attaches a user to someone else's existing company. A new login intended to join an existing cafe accepts an owner invitation from **Team & access**. Creating another cafe does not grant access to the original.
 
 Existing memberships and financial records remain intact. Legacy supplier/branch tables remain in the database for historical integrity, but the cafe UI does not expose production, supplier-credit, or multi-branch workflows.
+
+## Staff invitations
+
+The owner opens **Team & access**, enters a name and email, and sends an invitation. The `invite-staff` Edge Function verifies the session through Supabase Auth and saves an owner-checked pending invitation before requesting email delivery. Supabase supplies its service-role key only to the function. Auth invitation emails use **Supabase Auth email delivery**, independently of Resend cheque reminders. Configure production SMTP in Supabase Auth for reliable delivery and appropriate email limits.
+
+The function defaults to `https://band-b-cash-desk.vercel.app` for redirects and CORS. For a different deployment, set the server-side `APP_URL` Edge Function secret to its exact HTTPS origin and allow that origin in Supabase Auth URL Configuration. Allow the production URL for invitation redirects as well as confirmation and reset links. No additional browser secrets are needed.
+
+New users open the Auth invite email, choose a password, then explicitly join the cafe. Existing accounts sign in with the invited, verified email and accept the invitation. The database assigns `staff`; neither the invitation recipient nor the client can choose an owner role or another company. An account already belonging to a cafe cannot be reassigned by an invitation. Pending invitations block accidental new-cafe setup until accepted or declined.
+
+If email delivery fails, the invitation remains saved and the owner sees the failure. Correct Auth email delivery and submit the same address to retry; a sent invitation is reused. An existing login can accept by signing in even without a new invite email. Expired invitations can be replaced after seven days; revoke pending invitations from the team page. Changing a member to Data entry removes financial access at the database immediately, and the app refreshes roles on focus and every 30 seconds. The owner cannot demote the final owner; the UI keeps self-role changes disabled to avoid accidental lockout. Existing manager accounts retain their earlier access.
 
 ## 4. Optional email reminders
 

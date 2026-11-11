@@ -13,7 +13,7 @@ export async function checkDeployment(target, { allowDemo = false } = {}) {
   const metadata = await metadataResponse.json()
   if (metadata.app !== 'bb-cashdesk' || !metadata.buildId) throw new Error('The URL is not serving a current CashDesk build.')
   if (metadata.mode !== 'connected' && !allowDemo) throw new Error('This deployment is running the local demo. Configure the public Supabase settings in Vercel and redeploy.')
-  for (const path of ['/', '/cheques', '/transactions', '/reports']) {
+  for (const path of ['/', '/cheques', '/transactions', '/reports', '/entry', '/team']) {
     const response = await get(path), html = await response.text()
     if (!response.headers.get('content-type')?.includes('text/html') || !html.includes('id="root"')) throw new Error(`${path} is not serving the application document.`)
     if (path === '/') {

@@ -2,3 +2,7 @@ project_id = "bb-cashdesk"
 
 [functions.cheque-reminders]
 verify_jwt = false
+
+[functions.invite-staff]
+# The handler verifies the caller using Auth getUser and owner-checked SQL.
+verify_jwt = false

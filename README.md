@@ -13,6 +13,12 @@ A simple cashbook for a cafe that buys products from suppliers and sells them. T
 
 There are no bakery production, stock, multi-branch, or supplier-credit screens.
 
+## Owner and data-entry logins
+
+Owners use the full cashbook, balances, reminders, reports, backups and team settings. Invite a teammate from **Team & access** using their own email. They accept the invitation to join the **same cafe** with data-entry access. New users set a password through Supabase Auth’s invitation email; existing users sign in to accept. Invitations expire after 7 days and can be revoked.
+
+Data-entry staff can record income, expenses, transfers, issued/received cheques, and physical opening/closing cash counts. Their workspace has no dashboard, balances, transaction history, reminders, reports or exports. Cash counts start blank and require a note. Only owners/managers confirm cheque clearance. SQL policies and RPC checks enforce these restrictions even outside the interface; submissions retain the actor and time in the owner’s audit log. Existing manager memberships keep financial access; only owners manage invitations and roles.
+
 ## Important money rules
 
 - Transfers move money between accounts. They do **not** count as sales or expenses, and do not change your total money.
@@ -47,9 +53,9 @@ VITE_SUPABASE_PUBLISHABLE_KEY
 
 Vercel builds require a configured Supabase connection. An intentional hosted demo requires `VITE_CASHDESK_DEMO=true`; a production build no longer silently falls back to browser-only records.
 
-Apply the migrations in `supabase/migrations` through the native Supabase GitHub integration or the supplied deployment workflow. **Schema version 4** includes the daily cashbook and bank/safe transfers. The app checks this before opening a connected cashbook. Do not reapply scripts already recorded in migration history.
+Apply the migrations in `supabase/migrations` through the native Supabase GitHub integration or the supplied deployment workflow. **Schema version 5** includes the daily cashbook, bank/safe transfers, private data-entry access and staff invitations. The app checks this before opening a connected cashbook. Do not reapply scripts already recorded in migration history.
 
-For a new cafe, sign up or create an Auth user, verify the email, sign in, and complete the short cafe setup. Enter starting bank/safe balances; count your cash drawer when opening the first day. Existing team access remains administrator-managed. No sample transactions are uploaded to a connected cafe.
+For a new cafe, sign up or create an Auth user, verify the email, sign in, and complete the short cafe setup. Enter starting bank/safe balances; count your cash drawer when opening the first day. Owners invite teammates from **Team & access**. No sample transactions are uploaded to a connected cafe.
 
 See [deployment and reminder setup](docs/deployment.md) for the exact remaining service settings, migration automation, and optional daily emails.
 

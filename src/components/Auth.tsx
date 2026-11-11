@@ -7,7 +7,7 @@ import { parseMoney } from '../lib/domain'
 function AuthLayout({ children }: { children: ReactNode }) {
   return <div className="login-layout"><section className="login-story">
     <div className="brand"><img src="/favicon.svg" width="42" height="42" alt=""/><div><strong>B&B CashDesk</strong><small>BOOKS & BUNS</small></div></div>
-    <div><span className="eyebrow">LESS GUESSWORK. MORE GOOD DAYS.</span><h1>A little clarity.<br/>A better business.</h1><p>Know what you have, what you owe, and what’s around the corner.</p><div className="login-illustration"><BookOpen size={96} strokeWidth={1}/><Sprout size={58} strokeWidth={1}/></div></div><small>Good books. Better business.</small>
+    <div><span className="eyebrow">YOUR CAFE, CONNECTED.</span><h1>One workspace.<br/>Every cash movement.</h1><p>A clear view of daily cash, bank deposits, safe transfers and cheques. Built around your cafe.</p><div className="login-illustration"><BookOpen size={96} strokeWidth={1}/><Sprout size={58} strokeWidth={1}/></div></div><small>Clear records. Confident decisions.</small>
   </section><section className="login-main">{children}</section></div>
 }
 
@@ -86,4 +86,11 @@ export function WorkspaceSetup() {
     <small>Joining an existing team? Ask the owner to grant access to <strong>{session?.user.email}</strong>, then refresh. Creating a workspace does not join an existing business.</small>
     <div className="auth-links"><button type="button" onClick={() => void refresh()}>Refresh invitation status</button><button type="button" onClick={() => void supabase!.auth.signOut()}><LogOut size={14}/>Sign out</button></div>
   </form></AuthLayout>
+}
+
+export function JoinCafe(){
+  const {invitations,refresh}=useStore()
+  const [busy,setBusy]=useState(false),[error,setError]=useState('')
+  const respond=async(id:string,accept:boolean)=>{setBusy(true);setError('');try{const {error}=await supabase!.rpc(accept?'cashdesk_accept_invitation':'cashdesk_decline_invitation',{invitation_id:id});if(error)throw error;await refresh()}catch(e){setError(errorMessage(e))}finally{setBusy(false)}}
+  return <AuthLayout><div className="login-form"><span className="eyebrow">YOUR CAFE INVITATION</span><h2>Join your team.</h2><p>Your owner has invited you to enter records in their existing cafe.</p>{error&&<div className="form-error" role="alert">{error}</div>}{invitations.map(i=><section className="join-invitation" key={i.id}><h3>{i.companyName}</h3><p>Invited by {i.invitedBy} · Data-entry access</p><p className="form-note">Record daily activity. Your owner manages balances and reports.</p><div className="settings-actions"><button className="button primary" disabled={busy} onClick={()=>void respond(i.id,true)}>Join cafe</button><button className="button secondary" disabled={busy} onClick={()=>void respond(i.id,false)}>Decline</button></div></section>)}<button className="text-link" disabled={busy} onClick={()=>void supabase!.auth.signOut()}>Sign out</button></div></AuthLayout>
 }
