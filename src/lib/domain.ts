@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { employmentSchema, emptyEmployment, hrTypes, applyEmploymentCommand, type EmploymentCommand } from './employment'
 
 export const roles = ['owner', 'manager', 'staff'] as const
 export const chequeStatuses = ['issued', 'received', 'presented', 'cleared', 'returned', 'cancelled'] as const
@@ -18,6 +19,7 @@ export const cashDaySchema = z.object({id,branchId:id,accountId:id,date,opening:
 export const snapshotSchema = z.object({
   version: z.literal(1),
   companyName: name.optional(),
+  employment: employmentSchema.default(emptyEmployment),
   branches: z.array(z.object({ id, name, location: z.string() })).min(1),
   accounts: z.array(accountSchema), transactions: z.array(transactionSchema), cheques: z.array(chequeSchema),
   suppliers: z.array(supplierSchema), invoices: z.array(invoiceSchema),
@@ -47,6 +49,7 @@ export type Command = (
   | { type: 'addInvoice'; payload: Invoice }
   | { type: 'removeMember'; payload: {id:string} }
   | { type: 'setMemberRole'; payload: { id: string; role: Role } }
+| EmploymentCommand
 ) & { requestId?: string }
 
 export function today(): string {
@@ -116,9 +119,12 @@ export function validateSnapshot(input: unknown): Snapshot {
 export function applyCommand(data: Snapshot, command: Command, actor: {id:string; role:Role; name:string}): Snapshot {
   if (['setMemberRole','removeMember'].includes(command.type) && actor.role !== 'owner') throw new Error('Only the owner can manage team roles')
   if (['setChequeStatus','addAccount'].includes(command.type) && actor.role === 'staff') throw new Error('A manager or owner must approve this change')
+  if(hrTypes.includes(command.type)&&actor.role!=='owner')throw new Error('Only the owner can manage employees and salaries')
   const next = structuredClone(data)
   const p = command.payload
-  if (command.type === 'addTransaction') {
+  if(hrTypes.includes(command.type)){
+    applyEmploymentCommand(next,command as EmploymentCommand,today(),actor.name,payment=>{const paid=applyCommand(next,payment,actor);Object.assign(next,paid)})
+  } else if (command.type === 'addTransaction') {
     const t = transactionSchema.parse(command.payload)
     if (t.transferId||t.cashDayId) throw new Error('Use the money transfer or daily cash form for these entries')
     requireOpenCashDay(next,t.accountId,t.date)

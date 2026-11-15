@@ -19,6 +19,18 @@ Owners use the full cashbook, balances, reminders, reports, backups and team set
 
 Data-entry staff can record income, expenses, transfers, issued/received cheques, and physical opening/closing cash counts. Their workspace has no dashboard, balances, transaction history, reminders, reports or exports. Cash counts start blank and require a note. Only owners/managers confirm cheque clearance. SQL policies and RPC checks enforce these restrictions even outside the interface; submissions retain the actor and time in the owner’s audit log. Existing manager memberships keep financial access; only owners manage invitations and roles.
 
+## Employees, attendance and salary
+
+The owner opens **Employees & salary** to manage employee records without creating website logins. Add a monthly salary or daily wage, mark attendance and paid/unpaid leave, then review and approve the monthly salary. Inactive employees keep their history. A paid-leave allowance is an optional tracking reference; the app does not assign statutory entitlements.
+
+Monthly pay uses the reviewed working-day divisor and scheduled days, with deductions for marked unpaid absence. Unmarked dates do not reduce monthly pay; daily wages pay only marked paid units. Review the schedule for a joining month. Half days count as half paid and half unpaid. Attendance corrections require a note and are retained in private history.
+
+Enable EPF and/or ETF per employee when applicable. Defaults are employee EPF **8%**, employer EPF **12%**, and employer ETF **3%**; rates are editable. Review eligible earnings before approval. Employer contributions are additional business costs and do not reduce take-home pay. Approved runs preserve the employee’s rates, attendance and calculation, even after profile changes.
+
+Approval locks that month’s attendance and does not move money. Record full or partial salary, EPF and ETF payments when actually paid; each creates one cashbook expense. Salary advances are expenses when paid, and can be allocated as deductions or carried forward. An advance deduction does not create another expense. Void an unpaid run with a reason to correct it; runs with payments retain their approved history. Download a salary slip or the monthly attendance, salary and contributions report as a PDF.
+
+Employee records and payroll are private to business owners, enforced by database permissions. Managers retain their financial cashbook access but cannot read employee details; data-entry users cannot access employee records.
+
 ## Important money rules
 
 - Transfers move money between accounts. They do **not** count as sales or expenses, and do not change your total money.
@@ -53,7 +65,7 @@ VITE_SUPABASE_PUBLISHABLE_KEY
 
 Vercel builds require a configured Supabase connection. An intentional hosted demo requires `VITE_CASHDESK_DEMO=true`; a production build no longer silently falls back to browser-only records.
 
-Apply the migrations in `supabase/migrations` through the native Supabase GitHub integration or the supplied deployment workflow. **Schema version 6** includes the daily cashbook, bank/safe transfers, private data-entry access, staff invitations and protected user removal. The app checks this before opening a connected cashbook. Do not reapply scripts already recorded in migration history.
+Apply the migrations in `supabase/migrations` through the native Supabase GitHub integration or the supplied deployment workflow. **Schema version 7** adds owner-only employees, attendance and payroll to the daily cashbook, bank/safe transfers, private data-entry access, invitations and protected user removal. The app checks this before opening a connected cashbook. Do not reapply scripts already recorded in migration history.
 
 For a new cafe, sign up or create an Auth user, verify the email, sign in, and complete the short cafe setup. Enter starting bank/safe balances; count your cash drawer when opening the first day. Owners invite teammates from **Team & access**. No sample transactions are uploaded to a connected business.
 
@@ -68,7 +80,7 @@ npm run test:e2e
 npm run smoke:deployment -- https://band-b-cash-desk.vercel.app
 ```
 
-Build before browser tests. They use system Chromium when present, or `PLAYWRIGHT_CHROMIUM_PATH`. Otherwise install Playwright Chromium once. Tests cover the business cash routine, transfers, cash counts, cheque clearance, reports, permissions, first-owner setup, password recovery, connection failures, and duplicate-safe retries. Connected browser tests use an isolated mock; SQL tests execute the real migrations in embedded PostgreSQL.
+Build before browser tests. They use system Chromium when present, or `PLAYWRIGHT_CHROMIUM_PATH`. Otherwise install Playwright Chromium once. Tests cover the business cash routine, transfers, cash counts, cheque clearance, reports, permissions, first-owner setup, password recovery, connection failures, employee attendance, payroll calculations, contributions, actual payments and duplicate-safe retries. Connected browser tests use an isolated mock; SQL tests execute the real migrations in embedded PostgreSQL.
 
 GitHub runs checks on pushes and PRs. A deployment-health workflow checks Vercel assets, direct page routes, PWA files, and whether the deployment is connected rather than in demo mode. `/health.json` reports the build revision and required database version; it contains no keys and does not claim that the database is reachable.
 

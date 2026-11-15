@@ -17,7 +17,7 @@ Redeploy after changing environment variables: they are compiled into the build.
 
 ## 2. Apply database migrations
 
-Use the existing Supabase GitHub integration if it manages your production migrations. Migrations live in `supabase/migrations` and must run in filename order. The new business workflow requires all six, through `202611110006_business_access.sql`.
+Use the existing Supabase GitHub integration if it manages your production migrations. Migrations live in `supabase/migrations` and must run in filename order. The current app requires all seven, through `202611150007_employment.sql`. Migration 7 adds employee records, attendance history, payroll and linked payments; it creates no employees, logins or financial movements.
 
 If the original two migrations are already applied, apply only the pending migrations. If they were run manually, verify and repair their migration-history entries before using CLI automation. Do not rerun existing setup scripts or mark an unapplied migration as applied.
 
@@ -37,7 +37,7 @@ supabase db push --remote --yes
 supabase functions deploy cheque-reminders invite-staff --remote="$SUPABASE_PROJECT_REF" --use-api --yes
 ```
 
-The app's anonymous `cashdesk_health` probe discloses only `app` and `schemaVersion`. Version 6 is required. A missing/stale schema produces a setup message before login, rather than creating a local demo.
+The app's anonymous `cashdesk_health` probe discloses only `app` and `schemaVersion`. Version 7 is required. A missing/stale schema produces a setup message before login, rather than creating a local demo.
 
 ## 3. Set up the business owner
 
@@ -112,6 +112,10 @@ Then sign in and verify the public database health check, owner setup, opening c
 Closed cash days are protected. Transfers have two matching movements in one database transaction; sales/expense reports exclude them. Cash count differences are separately recorded and explained. Retrying a confirmed request does not write it again. Financial records remain append-only to app users.
 
 Export backups from Settings, keep them securely, and test restoration. The JSON export covers records visible to your account. Full PostgreSQL/Auth/grant/delivery backups and production restores remain administrator operations; browser restore is deliberately demo-only.
+
+Owner exports include sensitive employee, attendance, salary and contribution records. Managers and data-entry users cannot read these records. Employees are separate from Auth accounts and business memberships; archiving an employee does not change website access. Employee payments use the existing cashbook validation and request receipts, and each HR payment links to its single expense transaction. The server independently calculates payroll and rejects stale approval totals.
+
+See [Employees, attendance and salary](../README.md#employees-attendance-and-salary) for the owner workflow, attendance rules, configurable EPF/ETF basis and approval/payment distinction. Test this flow in a designated test business before entering live salaries; do not add sample payroll payments to real books.
 
 ## Removing business users
 

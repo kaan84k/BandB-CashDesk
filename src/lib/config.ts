@@ -1,4 +1,4 @@
-export const REQUIRED_SCHEMA_VERSION = 6
+export const REQUIRED_SCHEMA_VERSION = 7
 
 export type PublicConfig = {
   mode: 'connected' | 'demo' | 'error'

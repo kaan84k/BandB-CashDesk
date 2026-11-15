@@ -18,7 +18,7 @@ async function backend(page: Page, options: { setup?: boolean; missingSchema?: b
     if (url.pathname.endsWith('/recover')) { recoveries.push(body.email); await reply({}); return }
     if (url.pathname.endsWith('/user')) { if (request.method() === 'PUT') passwords.push(body.password); await reply(user); return }
     if (url.pathname.endsWith('/signup')) { await reply({ ...user, email_confirmed_at: null }); return }
-    if (url.pathname.endsWith('/cashdesk_health')) { await reply(options.missingSchema ? {code:'PGRST202',message:'Could not find function public.cashdesk_health'} : {app:'bb-cashdesk',schemaVersion:6}, options.missingSchema ? 404 : 200); return }
+    if (url.pathname.endsWith('/cashdesk_health')) { await reply(options.missingSchema ? {code:'PGRST202',message:'Could not find function public.cashdesk_health'} : {app:'bb-cashdesk',schemaVersion:7}, options.missingSchema ? 404 : 200); return }
     if (url.pathname.endsWith('/cashdesk_workspace_state')) { await reply(removed?{status:'access_removed'}:!joined?{status:'invitation_pending',invitations:[{id:'test-invitation',companyName:'Neighbourhood Store',invitedBy:'Business owner'}]}:{ status: setup ? 'setup_required' : 'ready',role:options.staff?'staff':'owner' }); return }
     if(url.pathname.endsWith('/cashdesk_accept_invitation')){joined=true;await reply(null);return}
     if(url.pathname.endsWith('/cashdesk_entry_context')){await reply({role:'staff',user:{...DEMO_USER,role:'staff'},cafe:{id:data.branches[0].id,name:'Neighbourhood Store'},branches:data.branches.map(({id,name})=>({id,name})),accounts:data.accounts.map(({id,branchId,name,type,bank})=>({id,branchId,name,type,bank})),days:data.cashDays.map(d=>({id:d.id,accountId:d.accountId,date:d.date,status:d.closing===null?'open':'closed'}))});return}
@@ -239,4 +239,21 @@ test('Cashflow branding is shared by business owners and data-entry staff',async
   await page.getByRole('button',{name:'Sign in',exact:true}).click()
   await expect(page.locator('.staff-header .brand strong')).toHaveText('Cashflow')
   await expect(page).toHaveTitle('Data entry · Cashflow')
+})
+
+test('saves owner employee records and retries an uncertain advance without duplicate cash expense',async({page})=>{
+ const state=await backend(page);await login(page);await page.goto('/employees')
+ await page.getByRole('button',{name:'Add employee',exact:true}).first().click();let dialog=page.getByRole('dialog')
+ await dialog.getByLabel('Employee name',{exact:true}).fill('Employee no login');await dialog.getByLabel('Joining date',{exact:true}).fill('2026-01-01');await dialog.getByLabel('Monthly salary (LKR)',{exact:true}).fill('50000')
+ await dialog.getByRole('button',{name:'Save employee',exact:true}).click();await expect(dialog).not.toBeVisible()
+ const count=state.data.transactions.length;state.loseNextSaveResponse()
+ await page.getByRole('button',{name:'Record advance',exact:true}).click();dialog=page.getByRole('dialog')
+ await dialog.getByLabel('Amount paid (LKR)',{exact:true}).fill('100')
+ await dialog.getByRole('button',{name:'Record payment',exact:true}).click();await expect(dialog.getByRole('alert')).toBeVisible()
+ await dialog.getByRole('button',{name:'Record payment',exact:true}).click();await expect(dialog).not.toBeVisible()
+ expect(state.data.transactions).toHaveLength(count+1);expect(state.data.employment.advances).toHaveLength(1);expect(state.data.members).toHaveLength(3)
+})
+test('cashier logins cannot open employee attendance or salary administration',async({page})=>{
+ const state=await backend(page,{staff:true});await login(page);await page.goto('/employees');await expect(page).toHaveURL(/\/entry$/)
+ await expect(page.getByRole('heading',{name:'Employees & salary.'})).toHaveCount(0);expect(state.financeReads).toBe(0)
 })

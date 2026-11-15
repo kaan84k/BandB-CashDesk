@@ -57,7 +57,7 @@ describe('connected startup and safe financial retries',()=>{
   it('exposes only the schema version to anonymous health checks',async()=>{
     await db.exec('reset role;set role anon')
     const result=await db.query<{health:unknown}>('select public.cashdesk_health() as health')
-    expect(result.rows[0].health).toEqual({app:'bb-cashdesk',schemaVersion:6})
+    expect(result.rows[0].health).toEqual({app:'bb-cashdesk',schemaVersion:7})
     await expect(db.query('select public.cashdesk_workspace_state()')).rejects.toThrow('permission denied')
   })
   it('reports missing branch access separately from first-run setup',async()=>{
@@ -295,4 +295,84 @@ describe('removal and reminder recipients',()=>{
     const settings=(await db.query<{recipients:string[];enabled:boolean}>('select recipients,enabled from public.reminder_settings')).rows[0]
     expect(settings.recipients).toEqual(['owner@example.com']);expect(settings.enabled).toBe(true)
   })
+})
+
+describe('owner employee attendance and payroll',()=>{
+ const period=()=>today().slice(0,7)+'-01'
+ const employee=()=>({id:crypto.randomUUID(),branchId:BR,name:'Cashier employee',phone:'0771234567',joined:'2026-01-01',active:true,payType:'monthly' as const,rate:5000000,allowance:0,workingDays:26,leaveAllowance:14,epfEnabled:true,etfEnabled:true,employeeRate:800,employerRate:1200,etfRate:300})
+ const input=(employeeId:string)=>({id:crypto.randomUUID(),employeeId,month:period(),workingDays:26,scheduledDays:26,allowance:0,eligible:5000000,advance:0,other:0,note:''})
+ async function approve(p:ReturnType<typeof input>){const {calculatePayroll}=await import('../src/lib/employment'),s=await snapshot(),e=s.employment.employees.find(e=>e.id===p.employeeId)!;await mutate('approvePayroll',{...p,expected:calculatePayroll(s.employment,e,p)})}
+ it('stores employee records independently of logins and restricts payroll data to the owner',async()=>{
+  const e=employee();await mutate('saveEmployee',e);expect((await snapshot()).employment.employees[0].name).toBe(e.name);expect((await snapshot()).members).toHaveLength(3)
+  for(const actor of [MANAGER,STAFF,OUTSIDER]){await login(actor);for(const table of ['employees','employee_attendance','employee_attendance_changes','employee_payrolls','employee_advances','employee_payments'])expect((await db.query(`select * from public.${table}`)).rows).toHaveLength(0);if(actor===OUTSIDER)expect((await db.query<{data:{employees:unknown[]}}>('select public.cashdesk_hr_snapshot() as data')).rows[0].data.employees).toHaveLength(0);else await expect(db.query('select public.cashdesk_hr_snapshot()')).rejects.toThrow('owner');await expect(mutate('saveEmployee',e)).rejects.toThrow()}
+  await login(MANAGER);expect((await snapshot()).employment.employees).toHaveLength(0)
+  await login();await expect(db.query('update public.employees set payload=$1 where id=$2',[JSON.stringify({...e,rate:0}),e.id])).rejects.toThrow('permission denied')
+  await expect(db.query('select public.cashdesk_apply_hr_command($1)',[JSON.stringify({type:'saveEmployee',payload:e})])).rejects.toThrow('permission denied')
+ })
+ it('approves the 50,000 example without moving money and records all three payments exactly once',async()=>{
+  const e=employee();await mutate('saveEmployee',e);const p=input(e.id);await approve(p)
+  let s=await snapshot();expect(s.transactions).toHaveLength(0);expect(s.employment.payrolls[0].calculation).toMatchObject({employeeEpf:400000,employerEpf:600000,etf:150000,net:4600000,cost:5750000})
+  for(const [kind,amount] of [['salary',4600000],['epf',1000000],['etf',150000]] as const){const id=crypto.randomUUID(),command={type:'payPayroll',requestId:id,payload:{id,payrollId:p.id,kind,amount,date:today(),accountId:BANK,note:''}};await db.query('select public.cashdesk_mutate($1)',[JSON.stringify(command)]);await db.query('select public.cashdesk_mutate($1)',[JSON.stringify(command)])}
+  s=await snapshot();expect(s.employment.payments).toHaveLength(3);expect(s.transactions.reduce((n,t)=>n+t.amount,0)).toBe(5750000)
+  await expect(mutate('payPayroll',{id:crypto.randomUUID(),payrollId:p.id,kind:'salary',amount:1,date:today(),accountId:BANK,note:''})).rejects.toThrow('outstanding')
+  expect((await snapshot()).transactions).toHaveLength(3)
+ })
+ it('recomputes attendance, half days, leave and editable contribution bases on the server',async()=>{
+  const e={...employee(),rate:2600000};await mutate('saveEmployee',e)
+  for(const [offset,status] of [[0,'present'],[1,'paid_leave'],[2,'unpaid_leave'],[3,'absent'],[4,'half_day']] as const)await mutate('setAttendance',{id:crypto.randomUUID(),employeeId:e.id,from:addDays(period(),offset),to:addDays(period(),offset),status,note:'Reviewed'})
+  const p={...input(e.id),eligible:2300000,allowance:100000};await approve(p)
+  const run=(await snapshot()).employment.payrolls[0];expect(run.calculation).toMatchObject({paidUnits:2.5,unpaidUnits:2.5,gross:2450000,eligible:2300000,employeeEpf:184000,employerEpf:276000,etf:69000,net:2266000})
+  expect(run.attendance).toHaveLength(5)
+  await expect(mutate('setAttendance',{id:crypto.randomUUID(),employeeId:e.id,from:period(),to:period(),status:'absent',note:''})).rejects.toThrow('locked')
+  await mutate('voidPayroll',{id:p.id,reason:'Attendance correction'});await mutate('setAttendance',{id:crypto.randomUUID(),employeeId:e.id,from:period(),to:period(),status:'off',note:'Corrected rest day'})
+  expect((await snapshot()).employment.payrolls[0].attendance.find(a=>a.date===period())?.status).toBe('present')
+ })
+ it('rejects client-forged or stale calculations without approving payroll',async()=>{
+  const e=employee();await mutate('saveEmployee',e);const p=input(e.id),{calculatePayroll}=await import('../src/lib/employment'),s=await snapshot(),expected=calculatePayroll(s.employment,e,p)
+  await expect(mutate('approvePayroll',{...p,expected:{...expected,net:999999}})).rejects.toThrow('calculation changed')
+  await mutate('saveEmployee',{...e,rate:6000000});await expect(mutate('approvePayroll',{...p,expected})).rejects.toThrow('calculation changed')
+  expect((await snapshot()).employment.payrolls).toHaveLength(0)
+ })
+ it('deducts recorded advances only once and preserves paid payroll and employee history',async()=>{
+  const e=employee();await mutate('saveEmployee',e);await mutate('addAdvance',{id:crypto.randomUUID(),employeeId:e.id,amount:10000,date:today(),accountId:BANK,note:'Advance paid'})
+  const p={...input(e.id),advance:10000};await approve(p)
+  let s=await snapshot();expect(s.employment.payrolls[0].calculation.net).toBe(4590000)
+  await mutate('payPayroll',{id:crypto.randomUUID(),payrollId:p.id,kind:'salary',amount:10000,date:today(),accountId:BANK,note:'Partial payment'})
+  await expect(mutate('voidPayroll',{id:p.id,reason:'Correction'})).rejects.toThrow('Paid payroll')
+  await mutate('saveEmployee',{...e,name:'Renamed employee',active:false})
+  s=await snapshot();expect(s.employment.payrolls[0].employeeName).toBe('Cashier employee');expect(s.employment.advances).toHaveLength(1);expect(s.employment.payments).toHaveLength(1)
+  await expect(mutate('setAttendance',{id:crypto.randomUUID(),employeeId:e.id,from:today(),to:today(),status:'present',note:''})).rejects.toThrow('Activate')
+ })
+ it('rolls back payment records when cash-day, funds or account ownership validation fails',async()=>{
+  const e=employee();await mutate('saveEmployee',e);const p=input(e.id);await approve(p)
+  const pay={id:crypto.randomUUID(),payrollId:p.id,kind:'salary',amount:10000,date:today(),accountId:CASH,note:''}
+  await expect(mutate('payPayroll',pay)).rejects.toThrow('Open the cash day')
+  expect((await snapshot()).employment.payments).toHaveLength(0);expect((await snapshot()).transactions).toHaveLength(0)
+  await expect(mutate('payPayroll',{...pay,accountId:FOREIGN_BANK})).rejects.toThrow('employee')
+  await mutate('openDay',{id:crypto.randomUUID(),branchId:BR,accountId:CASH,date:today(),opening:5000,notes:'Physical opening count'})
+  await expect(mutate('payPayroll',pay)).rejects.toThrow('not enough money')
+  await mutate('payPayroll',{...pay,amount:2000})
+  expect((await snapshot()).employment.payments[0].amount).toBe(2000)
+ })
+ it('protects future attendance and duplicate periods while carrying later advances forward',async()=>{
+  const e=employee();await mutate('saveEmployee',e)
+  const mark={id:crypto.randomUUID(),employeeId:e.id,from:addDays(today(),1),to:addDays(today(),1),status:'present',note:''}
+  await expect(mutate('setAttendance',mark)).rejects.toThrow('future')
+  await mutate('setAttendance',{...mark,status:'paid_leave'})
+  await mutate('setAttendance',{...mark,id:crypto.randomUUID(),status:'clear',note:'Cancelled planned leave'})
+  const p=input(e.id);await approve(p);await expect(approve({...p,id:crypto.randomUUID()})).rejects.toThrow('duplicate key')
+  await mutate('addAdvance',{id:crypto.randomUUID(),employeeId:e.id,amount:100,date:today(),accountId:BANK,note:'Carry forward'})
+  expect((await snapshot()).employment.payrolls[0].calculation.advance).toBe(0);expect((await snapshot()).employment.advances).toHaveLength(1)
+ })
+})
+
+it('logs attendance corrections privately and requires a correction note',async()=>{
+ const e={id:crypto.randomUUID(),branchId:BR,name:'Attendance employee',phone:'',joined:'2026-01-01',active:true,payType:'monthly',rate:5000000,allowance:0,workingDays:26,leaveAllowance:0,epfEnabled:false,etfEnabled:false,employeeRate:800,employerRate:1200,etfRate:300}
+ await mutate('saveEmployee',e)
+ const id=crypto.randomUUID(),mark={id,employeeId:e.id,from:today(),to:today(),status:'present',note:''},command={type:'setAttendance',requestId:id,payload:mark}
+ await db.query('select public.cashdesk_mutate($1)',[JSON.stringify(command)]);await db.query('select public.cashdesk_mutate($1)',[JSON.stringify(command)])
+ await expect(mutate('setAttendance',{...mark,id:crypto.randomUUID(),status:'absent'})).rejects.toThrow('correction')
+ await mutate('setAttendance',{...mark,id:crypto.randomUUID(),status:'absent',note:'Corrected after checking the roster'})
+ const hr=(await snapshot()).employment;expect(hr.changes).toHaveLength(2);expect(hr.changes[0].before[0].status).toBe('present');expect(hr.changes[0].after[0].status).toBe('absent')
+ await login(MANAGER);expect((await db.query('select * from public.employee_attendance_changes')).rows).toHaveLength(0)
 })
